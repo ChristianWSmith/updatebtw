@@ -1,0 +1,69 @@
+#!/bin/sh
+# updatebtw — Arch Linux automatic update utility
+
+UPDATERBTW_ROOT="${UPDATERBTW_ROOT:-/usr/lib/updatebtw}"
+export UPDATERBTW_ROOT
+
+case "${1:-help}" in
+  update)
+    if [ -n "$SYSTEMD_INHIBIT" ]; then
+      exec systemd-inhibit --what=shutdown:sleep \
+        --who="updatebtw" \
+        --why="Running system update" \
+        --mode=block \
+        env -u SYSTEMD_INHIBIT "$0" update
+    fi
+    . "$UPDATERBTW_ROOT/config.sh"
+    . "$UPDATERBTW_ROOT/backup.sh"
+    . "$UPDATERBTW_ROOT/updater.sh"
+    update_packages
+    ;;
+  install|reconfigure)
+    . "$UPDATERBTW_ROOT/config.sh"
+    . "$UPDATERBTW_ROOT/backup.sh"
+    . "$UPDATERBTW_ROOT/silent-boot.sh"
+    . "$UPDATERBTW_ROOT/installer.sh"
+    tui_main
+    ;;
+  status)
+    . "$UPDATERBTW_ROOT/config.sh"
+    read_config
+    echo "Configuration: $UPDATERBTW_CONFIG"
+    echo "  AUR_HELPER=${AUR_HELPER:-yay}"
+    echo "  UPDATE_FREQUENCY=${UPDATE_FREQUENCY:-weekly}"
+    echo "  UPDATE_TIME=${UPDATE_TIME:-06:00}"
+    echo "  RUN_AT_BOOT=${RUN_AT_BOOT:-false}"
+    echo "  ENABLE_REFLECTOR=${ENABLE_REFLECTOR:-true}"
+    echo "  REFLECTOR_COUNTRY=${REFLECTOR_COUNTRY:-United States}"
+    echo "  SILENT_BOOT=${SILENT_BOOT:-false}"
+    echo "  AUR_USER=${AUR_USER:-aur_builder}"
+    ;;
+  backup)
+    . "$UPDATERBTW_ROOT/backup.sh"
+    case "${2:-list}" in
+      list) list_backups "$3" ;;
+      restore)
+        if [ -n "$3" ] && [ -f "$3" ]; then
+          restore_file "$3"
+        else
+          echo "Usage: updatebtw backup restore <path>" >&2
+          exit 1
+        fi
+        ;;
+      *) echo "Usage: updatebtw backup list|restore <path>" >&2; exit 1 ;;
+    esac
+    ;;
+  help|--help|-h|*)
+    cat << 'HELP'
+usage: updatebtw <command>
+
+commands:
+  update       Run system update now
+  install      Run TUI installer/reconfigure
+  status       Show current configuration
+  backup list  List available backups
+  backup restore <path>  Restore a file from backup
+  help         Show this help message
+HELP
+    ;;
+esac

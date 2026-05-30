@@ -1,0 +1,5 @@
+# updatebtw
+.git/
+*.swp
+*.swo
+installer.sh
