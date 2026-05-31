@@ -14,13 +14,18 @@ backup_file() {
   local ts rand
   ts="$(date "+%Y%m%d_%H%M%S")"
   rand="$(head -c 4 /dev/urandom | od -An -tx4 | tr -d ' ')"
-  cp -a "$src" "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
-  chmod 600 "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
-  chown root:root "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}" 2>/dev/null || true
+  local backup_path="$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
+  cp -a "$src" "$backup_path"
+  chmod 600 "$backup_path"
+  chown root:root "$backup_path" 2>/dev/null || true
 
   mkdir -p "$(dirname "$UPDATERBTW_BACKUP_MANIFEST")"
+  local hash
+  hash="$(sha256sum "$backup_path" | awk '{print $1}')"
   grep -qxF "$src" "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || echo "$src" >> "$UPDATERBTW_BACKUP_MANIFEST"
+  echo "$src $hash" >> "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
   chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
+  chmod 600 "${UPDATERBTW_BACKUP_MANIFEST}.hashes" 2>/dev/null || true
 
   _rotate_backups "$name"
 }
@@ -40,6 +45,20 @@ restore_file() {
   local latest
   latest="$(ls -t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null | head -1)"
   [ -n "$latest" ] || return 1
+
+  if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
+    local expected_hash
+    expected_hash="$(grep "^$src " "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1 | awk '{print $2}')"
+    if [ -n "$expected_hash" ]; then
+      local actual_hash
+      actual_hash="$(sha256sum "$latest" | awk '{print $1}')"
+      if [ "$actual_hash" != "$expected_hash" ]; then
+        echo "updatebtw: backup integrity check failed for $src" >&2
+        return 1
+      fi
+    fi
+  fi
+
   cp -a "$latest" "$src"
 }
 

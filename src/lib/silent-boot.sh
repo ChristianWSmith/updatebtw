@@ -30,7 +30,7 @@ set_kernel_options() {
     backup_file "$entry" 2>/dev/null || true
 
     local tmpfile
-    tmpfile="$(mktemp "${entry}.XXXXXX")"
+    tmpfile="$(mktemp /tmp/updatebtw-entry.XXXXXX)"
     chmod 644 "$tmpfile"
     chown root:root "$tmpfile"
     local line
@@ -61,7 +61,14 @@ set_kernel_options() {
       fi
     done < "$entry"
 
-    mv "$tmpfile" "$entry"
+    # Preserve original ownership/permissions, then atomic replace
+    local orig_perms orig_owner orig_group
+    orig_perms="$(stat -c '%a' "$entry" 2>/dev/null || echo "644")"
+    orig_owner="$(stat -c '%u' "$entry" 2>/dev/null || echo "0")"
+    orig_group="$(stat -c '%g' "$entry" 2>/dev/null || echo "0")"
+    chmod "$orig_perms" "$tmpfile"
+    chown "$orig_owner:$orig_group" "$tmpfile"
+    mv -f "$tmpfile" "$entry"
   done
 }
 
@@ -72,7 +79,7 @@ set_grub_silent() {
   backup_file "$grub_cfg" 2>/dev/null || true
 
   local tmpfile
-  tmpfile="$(mktemp "${grub_cfg}.XXXXXX")"
+  tmpfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
   chmod 644 "$tmpfile"
   chown root:root "$tmpfile"
 
@@ -110,7 +117,14 @@ set_grub_silent() {
     printf 'GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT\n' >> "$tmpfile"
   fi
 
-  mv "$tmpfile" "$grub_cfg"
+  # Preserve original ownership/permissions, then atomic replace
+  local orig_perms orig_owner orig_group
+  orig_perms="$(stat -c '%a' "$grub_cfg" 2>/dev/null || echo "644")"
+  orig_owner="$(stat -c '%u' "$grub_cfg" 2>/dev/null || echo "0")"
+  orig_group="$(stat -c '%g' "$grub_cfg" 2>/dev/null || echo "0")"
+  chmod "$orig_perms" "$tmpfile"
+  chown "$orig_owner:$orig_group" "$tmpfile"
+  mv -f "$tmpfile" "$grub_cfg"
 
   if command -v grub-mkconfig >/dev/null 2>&1; then
     grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
@@ -132,7 +146,7 @@ patch_mkinitcpio() {
   backup_file "$src" 2>/dev/null || true
 
   local tmpfile
-  tmpfile="$(mktemp "${src}.XXXXXX")"
+  tmpfile="$(mktemp /tmp/updatebtw-mkinitcpio.XXXXXX)"
   chmod 644 "$tmpfile"
   chown root:root "$tmpfile"
   local line
@@ -172,7 +186,14 @@ patch_mkinitcpio() {
     fi
   done < "$src"
 
-  mv "$tmpfile" "$src"
+  # Preserve original ownership/permissions, then atomic replace
+  local orig_perms orig_owner orig_group
+  orig_perms="$(stat -c '%a' "$src" 2>/dev/null || echo "644")"
+  orig_owner="$(stat -c '%u' "$src" 2>/dev/null || echo "0")"
+  orig_group="$(stat -c '%g' "$src" 2>/dev/null || echo "0")"
+  chmod "$orig_perms" "$tmpfile"
+  chown "$orig_owner:$orig_group" "$tmpfile"
+  mv -f "$tmpfile" "$src"
 }
 
 patch_fsck_services() {
@@ -187,7 +208,7 @@ patch_fsck_services() {
     backup_file "$file" 2>/dev/null || true
 
     local tmpfile
-    tmpfile="$(mktemp "${file}.XXXXXX")"
+    tmpfile="$(mktemp /tmp/updatebtw-fsck.XXXXXX)"
     chmod 644 "$tmpfile"
     chown root:root "$tmpfile"
     local in_service=false
@@ -207,7 +228,14 @@ patch_fsck_services() {
       fi
     done < "$file"
 
-    mv "$tmpfile" "$file"
+    # Preserve original ownership/permissions, then atomic replace
+    local orig_perms orig_owner orig_group
+    orig_perms="$(stat -c '%a' "$file" 2>/dev/null || echo "644")"
+    orig_owner="$(stat -c '%u' "$file" 2>/dev/null || echo "0")"
+    orig_group="$(stat -c '%g' "$file" 2>/dev/null || echo "0")"
+    chmod "$orig_perms" "$tmpfile"
+    chown "$orig_owner:$orig_group" "$tmpfile"
+    mv -f "$tmpfile" "$file"
   done
 }
 

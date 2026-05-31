@@ -6,6 +6,11 @@ FLATPAK_USER="${FLATPAK_USER:-${AUR_USER:-aur_builder}}"
 
 _allowed_config_keys="AUR_HELPER UPDATE_FREQUENCY UPDATE_TIME RUN_AT_BOOT ENABLE_REFLECTOR REFLECTOR_COUNTRY REFLECTOR_PROTOCOL REFLECTOR_INTERVAL SILENT_BOOT AUR_USER FLATPAK_USER BLACKLIST_MODULES"
 
+# Strict allowlist of characters permitted in config values.
+# Covers: alphanumerics, _, ., /, space, :, @, comma, +, -
+# Excludes: $ ` ; & | ( ) { } ! < > ' " [ ] \ ~ # % ^ * ?
+_safe_value_pattern='^[a-zA-Z0-9_./ :@,+.-]*$'
+
 _safe_read_config() {
   local cfg="$1"
   [ -f "$cfg" ] || return 0
@@ -29,8 +34,13 @@ _safe_read_config() {
     return 1
   fi
 
-  local line key
-  while IFS= read -r line; do
+  # Open fd 8 for reading before any further processing to mitigate TOCTOU.
+  # Once the fd is open, the kernel holds a reference to the original inode,
+  # so swapping the file path won't affect what we read.
+  exec 8< "$cfg"
+
+  local line key value
+  while IFS= read -r line <&8; do
     case "$line" in
       ""|\#*) continue ;;
     esac
@@ -45,33 +55,42 @@ _safe_read_config() {
     done
     if ! $allowed; then
       echo "updatebtw: config $cfg contains unknown key: $key" >&2
+      exec 8<&-
       return 1
     fi
-    case "$line" in
-      *'$('*|*'`'*|*';'*|*'&'*|*'|'*)
-        echo "updatebtw: config $cfg contains dangerous syntax in: $line" >&2
-        return 1
-        ;;
+
+    # Extract value: strip key= and surrounding quotes
+    value="${line#*=}"
+    # Remove leading/trailing double quotes if present
+    case "$value" in
+      '"'*'"') value="$(printf '%s' "$value" | sed 's/^"//;s/"$//')" ;;
     esac
-    case "$line" in
-      *'$(( '*|*'$[['*|*'${!'*)
-        echo "updatebtw: config $cfg contains dangerous syntax in: $line" >&2
-        return 1
-        ;;
-    esac
-    if printf '%s' "$line" | grep -qE '(> |>>|<>|><|<\(|>\(|\$'\'')'; then
-      echo "updatebtw: config $cfg contains dangerous syntax in: $line" >&2
+
+    # Strict character allowlist — no dangerous syntax can pass
+    if ! printf '%s' "$value" | grep -qE "$_safe_value_pattern"; then
+      echo "updatebtw: config $cfg contains invalid characters in: $line" >&2
+      exec 8<&-
       return 1
     fi
-  done < "$cfg"
 
-  local lock_file="${cfg}.lock"
-  exec 9> "$lock_file"
-  flock 9 || return 1
+    # Set variable directly — never source the file
+    case "$key" in
+      AUR_HELPER)        AUR_HELPER="$value" ;;
+      UPDATE_FREQUENCY)  UPDATE_FREQUENCY="$value" ;;
+      UPDATE_TIME)       UPDATE_TIME="$value" ;;
+      RUN_AT_BOOT)       RUN_AT_BOOT="$value" ;;
+      ENABLE_REFLECTOR)  ENABLE_REFLECTOR="$value" ;;
+      REFLECTOR_COUNTRY) REFLECTOR_COUNTRY="$value" ;;
+      REFLECTOR_PROTOCOL) REFLECTOR_PROTOCOL="$value" ;;
+      REFLECTOR_INTERVAL) REFLECTOR_INTERVAL="$value" ;;
+      SILENT_BOOT)       SILENT_BOOT="$value" ;;
+      BLACKLIST_MODULES) BLACKLIST_MODULES="$value" ;;
+      AUR_USER)          AUR_USER="$value" ;;
+      FLATPAK_USER)      FLATPAK_USER="$value" ;;
+    esac
+  done
 
-  . "$cfg"
-  flock -u 9
-  exec 9>&-
+  exec 8<&-
 }
 
 read_config() {

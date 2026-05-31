@@ -8,8 +8,10 @@ _check_rate_limit() {
   local state_file="$UPDATERBTW_STATE_DIR/last_update"
   local lock_file="$UPDATERBTW_STATE_DIR/update.lock"
   mkdir -p "$UPDATERBTW_STATE_DIR"
+  chmod 700 "$UPDATERBTW_STATE_DIR"
 
   exec 8> "$lock_file"
+  chmod 600 "$lock_file"
   if ! flock -n 8; then
     _notify error "Update In Progress" "Another update is already running"
     return 1
@@ -28,6 +30,7 @@ _check_rate_limit() {
   fi
 
   date "+%s" > "$state_file"
+  chmod 600 "$state_file"
   return 0
 }
 
@@ -152,16 +155,25 @@ _notify() {
   if [ -n "$target_user" ]; then
     local uid
     uid="$(id -u "$target_user" 2>/dev/null)" || return 0
-    if [ -S "/run/user/$uid/bus" ]; then
+
+    case "$uid" in
+      ''|*[!0-9]*) return 0 ;;
+    esac
+    if [ "$uid" -lt 1000 ] || [ "$uid" -gt 60000 ]; then
+      return 0
+    fi
+
+    local bus_path="/run/user/$uid/bus"
+    if [ -S "$bus_path" ]; then
       if [ "$(id -un)" = "$target_user" ]; then
         notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
       elif command -v runuser >/dev/null 2>&1; then
         runuser -u "$target_user" -- env \
           XDG_RUNTIME_DIR="/run/user/$uid" \
-          DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+          DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
           notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
       else
-        su - "$target_user" -c "XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
+        su - "$target_user" -c "XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=$bus_path notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
       fi
     fi
   else

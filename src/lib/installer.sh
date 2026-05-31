@@ -38,6 +38,16 @@ _check_deps() {
 
 _install_aur_helper() {
   local helper="$1" user="$2"
+
+  case "$helper" in
+    yay|paru) ;;
+    *) echo "Invalid AUR helper: $helper" >&2; return 1 ;;
+  esac
+  if ! printf '%s' "$user" | grep -qE '^[a-z_][a-z0-9_-]*\$?$'; then
+    echo "Invalid username: $user" >&2
+    return 1
+  fi
+
   command -v "$helper" >/dev/null 2>&1 && return 0
 
   if [ "$(id -un)" != "$user" ]; then
@@ -54,20 +64,38 @@ SUDOEOF
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"' EXIT
 
   rm -rf "/tmp/$helper" 2>/dev/null || true
-  if [ "$(id -un)" = "$user" ]; then
-    git clone --depth=1 "https://aur.archlinux.org/$helper.git" "/tmp/$helper"
-    cd "/tmp/$helper"
-    makepkg -s --noconfirm
-    sudo pacman -U --noconfirm *.pkg.tar.*
-  else
-    su - "$user" -c "
-      git clone --depth=1 https://aur.archlinux.org/$helper.git /tmp/$helper
-      cd /tmp/$helper
-      makepkg -s --noconfirm
-    "
-    sudo pacman -U --noconfirm /tmp/$helper/*.pkg.tar.*
-  fi && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
 
+  local build_script
+  build_script="$(mktemp /tmp/updatebtw-build.XXXXXX.sh)"
+  cat > "$build_script" << 'BUILDEOF'
+#!/bin/sh
+set -e
+HELPER="$1"
+HELPER_TMP="/tmp/$HELPER"
+rm -rf "$HELPER_TMP"
+git clone --depth=1 "https://aur.archlinux.org/$HELPER.git" "$HELPER_TMP"
+cd "$HELPER_TMP"
+makepkg -s --noconfirm
+BUILDEOF
+  chmod 755 "$build_script"
+  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"' EXIT
+
+  if [ "$(id -un)" = "$user" ]; then
+    sh "$build_script" "$helper"
+  else
+    su - "$user" -c "sh '$build_script' '$helper'"
+  fi
+
+  if [ -f "/tmp/$helper/PKGBUILD" ]; then
+    local pkgbuild_hash
+    pkgbuild_hash="$(sha256sum "/tmp/$helper/PKGBUILD" | awk '{print $1}')"
+    echo "PKGBUILD SHA256: $pkgbuild_hash"
+    echo "Verify at: https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
+  fi
+
+  sudo pacman -U --noconfirm /tmp/"$helper"/*.pkg.tar.* && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
+
+  rm -f "$build_script"
   command -v "$helper" >/dev/null 2>&1
 }
 

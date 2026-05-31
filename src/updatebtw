@@ -34,6 +34,8 @@ case "${1:-help}" in
       UPDATERBTW_LOG_FILE="$UPDATERBTW_LOG_DIR/$(date +%Y%m%d_%H%M%S).log"
       export UPDATERBTW_LOG_DIR UPDATERBTW_LOG_FILE
       mkdir -p "$UPDATERBTW_LOG_DIR"
+      chmod 750 "$UPDATERBTW_LOG_DIR"
+      umask 0077
       exec >> "$UPDATERBTW_LOG_FILE" 2>&1
     fi
     . "$UPDATERBTW_ROOT/config.sh"
