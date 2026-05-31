@@ -94,6 +94,7 @@ _setup_aur_user() {
 }
 
 main() {
+  [ ! -t 0 ] && exec 0< /dev/tty
   _check_root
   _check_deps
 
