@@ -13,6 +13,16 @@ cat << 'INSTALLER_HEADER'
 
 set -e
 
+INSTALLER_URL="https://raw.githubusercontent.com/anomalyco/updatebtw/main/installer.sh"
+
+# When piped into bash (stdin is not a terminal), download to a temp file and
+# re-exec from there. This frees stdin for the TUI (whiptail opens /dev/tty).
+if [ ! -t 0 ]; then
+  tmp=""
+  curl -sSfL -o "/tmp/updatebtw-installer-$$.sh" "$INSTALLER_URL" 2>/dev/null && tmp="/tmp/updatebtw-installer-$$.sh"
+  [ -n "$tmp" ] && exec bash "$tmp" "$@"
+fi
+
 UPDATERBTW_ROOT="/usr/lib/updatebtw"
 UPDATERBTW_CONFIG="/etc/updatebtw/updatebtw.conf"
 export UPDATERBTW_ROOT UPDATERBTW_CONFIG
@@ -96,8 +106,6 @@ _setup_aur_user() {
 main() {
   _check_root
   _check_deps
-
-  whiptail() { command whiptail "$@" </dev/tty; }
 
   whiptail --title "updatebtw" --msgbox \
     "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nNOTE: This project is NOT affiliated with or endorsed by Arch Linux.\nIt is an unofficial third-party tool.\n\nThis installer will configure automatic system updates on your system." \
