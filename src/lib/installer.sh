@@ -135,8 +135,22 @@ tui_main() {
     ENABLE_REFLECTOR="false"
   fi
 
-  if whiptail --title "Silent Boot" --yesno \
-    "Configure silent boot?\n\nReduces kernel messages during boot for a cleaner experience.\nModifies boot loader entries, mkinitcpio, and systemd-fsck services." 12 60; then
+  local bootloader
+  bootloader="$(detect_bootloader)"
+  local silent_boot_msg
+  case "$bootloader" in
+    systemd-boot)
+      silent_boot_msg="Configure silent boot?\n\nDetected: systemd-boot\n\nReduces boot messages by modifying boot loader entries,\nmkinitcpio, systemd-fsck services, and kernel printk settings."
+      ;;
+    grub)
+      silent_boot_msg="Configure silent boot?\n\nDetected: GRUB\n\nReduces boot messages by configuring GRUB timeout settings,\nregenerating grub.cfg, and adjusting mkinitcpio, systemd-fsck\nservices, and kernel printk settings."
+      ;;
+    unknown)
+      silent_boot_msg="Configure silent boot?\n\nNo supported bootloader detected (systemd-boot or GRUB).\n\nBootloader-specific changes will be skipped, but generic\nchanges will still apply: mkinitcpio, systemd-fsck services,\nand kernel printk settings."
+      ;;
+  esac
+
+  if whiptail --title "Silent Boot" --yesno "$silent_boot_msg" 14 65; then
     SILENT_BOOT="true"
   else
     SILENT_BOOT="false"

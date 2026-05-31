@@ -1,5 +1,12 @@
 # updatebtw silent boot module
 
+detect_bootloader() {
+  [ -f /boot/loader/loader.conf ] && echo "systemd-boot" && return 0
+  [ -f /etc/default/grub ] && echo "grub" && return 0
+  echo "unknown"
+  return 0
+}
+
 set_kernel_options() {
   local entries_dir="${1:-/boot/loader/entries}"
   local kernel_options="${2:-quiet loglevel=3 vt.global_cursor_default=0 systemd.show_status=auto rd.udev.log_level=3 nowatchdog modprobe.blacklist=sp5100_tco audit=0}"
@@ -51,6 +58,58 @@ set_kernel_options() {
     chown root:root "$tmpfile"
     mv "$tmpfile" "$entry"
   done
+}
+
+set_grub_silent() {
+  local grub_cfg="${1:-/etc/default/grub}"
+  [ -f "$grub_cfg" ] || return 0
+
+  backup_file "$grub_cfg" 2>/dev/null || true
+
+  local tmpfile
+  tmpfile="$(mktemp)"
+
+  local has_default=false has_timeout=false has_recordfail=false
+
+  while IFS= read -r line; do
+    local key="${line%%=*}"
+    key="${key## }"
+    case "$key" in
+      GRUB_DEFAULT)
+        printf 'GRUB_DEFAULT=0\n' >> "$tmpfile"
+        has_default=true
+        ;;
+      GRUB_TIMEOUT)
+        printf 'GRUB_TIMEOUT=0\n' >> "$tmpfile"
+        has_timeout=true
+        ;;
+      GRUB_RECORDFAIL_TIMEOUT)
+        printf 'GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT\n' >> "$tmpfile"
+        has_recordfail=true
+        ;;
+      *)
+        printf '%s\n' "$line" >> "$tmpfile"
+        ;;
+    esac
+  done < "$grub_cfg"
+
+  if ! $has_default; then
+    printf 'GRUB_DEFAULT=0\n' >> "$tmpfile"
+  fi
+  if ! $has_timeout; then
+    printf 'GRUB_TIMEOUT=0\n' >> "$tmpfile"
+  fi
+  if ! $has_recordfail; then
+    printf 'GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT\n' >> "$tmpfile"
+  fi
+
+  chmod 644 "$tmpfile"
+  chown root:root "$tmpfile"
+  mv "$tmpfile" "$grub_cfg"
+
+  if command -v grub-mkconfig >/dev/null 2>&1; then
+    grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
+  fi
 }
 
 set_printk() {
@@ -127,7 +186,20 @@ patch_fsck_services() {
 }
 
 silent_boot() {
-  set_kernel_options
+  local bootloader
+  bootloader="$(detect_bootloader)"
+  case "$bootloader" in
+    systemd-boot)
+      set_kernel_options
+      ;;
+    grub)
+      set_grub_silent
+      ;;
+    unknown)
+      echo "Warning: Unknown bootloader — skipping bootloader-specific changes"
+      ;;
+  esac
+
   set_printk
   patch_mkinitcpio
   patch_fsck_services
@@ -137,6 +209,7 @@ silent_boot() {
   fi
 
   touch ~root/.hushlogin
+  touch ~"${SUDO_USER:-$(id -un)}"/.hushlogin 2>/dev/null || true
 
   systemctl unmask systemd-journald-audit.socket 2>/dev/null || true
   systemctl stop systemd-journald-audit.socket 2>/dev/null || true

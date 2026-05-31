@@ -1,0 +1,12 @@
+# GRUB boot loader configuration
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR="Arch Linux"
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"
+GRUB_CMDLINE_LINUX=""
+
+# Preload both GPT and MBR modules
+GRUB_PRELOAD_MODULES="part_gpt part_msdos"
+
+# Uncomment to enable GRUB integration with /etc/default/grub.d
+GRUB_DISABLE_OS_PROBER=false

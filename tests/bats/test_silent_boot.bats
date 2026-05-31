@@ -155,3 +155,172 @@ EOF
 
   rm -rf "$testdir"
 }
+
+@test "detect_bootloader returns systemd-boot when loader.conf exists" {
+  local testdir="$(mktemp -d /tmp/updatebtw-bootloader.XXXXXX)"
+  mkdir -p "$testdir/boot/loader"
+  touch "$testdir/boot/loader/loader.conf"
+
+  local test_script="$(mktemp /tmp/test_detect.XXXXXX.sh)"
+  cat > "$test_script" << 'SCRIPT'
+#!/bin/sh
+detect_bootloader_test() {
+  local loader_conf="$1"
+  local grub_conf="$2"
+  [ -f "$loader_conf" ] && echo "systemd-boot" && return 0
+  [ -f "$grub_conf" ] && echo "grub" && return 0
+  echo "unknown"
+  return 0
+}
+detect_bootloader_test "$1" "$2"
+SCRIPT
+  chmod +x "$test_script"
+
+  local result
+  result="$("$test_script" "$testdir/boot/loader/loader.conf" "/nonexistent/grub")"
+  [ "$result" = "systemd-boot" ]
+
+  rm -f "$test_script"
+  rm -rf "$testdir"
+}
+
+@test "detect_bootloader returns grub when /etc/default/grub exists" {
+  local testdir="$(mktemp -d /tmp/updatebtw-bootloader.XXXXXX)"
+  mkdir -p "$testdir/etc/default"
+  touch "$testdir/etc/default/grub"
+
+  local test_script="$(mktemp /tmp/test_detect.XXXXXX.sh)"
+  cat > "$test_script" << 'SCRIPT'
+#!/bin/sh
+detect_bootloader_test() {
+  local loader_conf="$1"
+  local grub_conf="$2"
+  [ -f "$loader_conf" ] && echo "systemd-boot" && return 0
+  [ -f "$grub_conf" ] && echo "grub" && return 0
+  echo "unknown"
+  return 0
+}
+detect_bootloader_test "$1" "$2"
+SCRIPT
+  chmod +x "$test_script"
+
+  local result
+  result="$("$test_script" "/nonexistent/loader.conf" "$testdir/etc/default/grub")"
+  [ "$result" = "grub" ]
+
+  rm -f "$test_script"
+  rm -rf "$testdir"
+}
+
+@test "detect_bootloader returns unknown when neither exists" {
+  local test_script="$(mktemp /tmp/test_detect.XXXXXX.sh)"
+  cat > "$test_script" << 'SCRIPT'
+#!/bin/sh
+detect_bootloader_test() {
+  local loader_conf="$1"
+  local grub_conf="$2"
+  [ -f "$loader_conf" ] && echo "systemd-boot" && return 0
+  [ -f "$grub_conf" ] && echo "grub" && return 0
+  echo "unknown"
+  return 0
+}
+detect_bootloader_test "$1" "$2"
+SCRIPT
+  chmod +x "$test_script"
+
+  local result
+  result="$("$test_script" "/nonexistent/loader.conf" "/nonexistent/grub")"
+  [ "$result" = "unknown" ]
+
+  rm -f "$test_script"
+}
+
+@test "set_grub_silent sets GRUB_DEFAULT=0" {
+  local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
+  cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
+
+  set_grub_silent "$testfile"
+
+  grep "^GRUB_DEFAULT=0$" "$testfile" >/dev/null
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent sets GRUB_TIMEOUT=0" {
+  local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
+  cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
+
+  set_grub_silent "$testfile"
+
+  grep "^GRUB_TIMEOUT=0$" "$testfile" >/dev/null
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent sets GRUB_RECORDFAIL_TIMEOUT=\$GRUB_TIMEOUT" {
+  local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
+  cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
+
+  set_grub_silent "$testfile"
+
+  grep "^GRUB_RECORDFAIL_TIMEOUT=\$GRUB_TIMEOUT$" "$testfile" >/dev/null
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent preserves other GRUB settings" {
+  local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
+  cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
+
+  set_grub_silent "$testfile"
+
+  grep "^GRUB_DISTRIBUTOR=" "$testfile" >/dev/null
+  grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$testfile" >/dev/null
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent creates backup" {
+  local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
+  cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
+
+  set_grub_silent "$testfile"
+
+  local name="$(basename "$testfile")"
+  ls "$BACKUP_DIR/${name}."* >/dev/null 2>&1
+  [ "$?" -eq 0 ]
+
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent appends missing keys" {
+  local testfile="$(mktemp /tmp/updatebtw-grub-minimal.XXXXXX)"
+  cat > "$testfile" << 'EOF'
+GRUB_DISTRIBUTOR="Arch"
+EOF
+
+  set_grub_silent "$testfile"
+
+  grep "^GRUB_DEFAULT=0$" "$testfile" >/dev/null
+  grep "^GRUB_TIMEOUT=0$" "$testfile" >/dev/null
+  grep "^GRUB_RECORDFAIL_TIMEOUT=\$GRUB_TIMEOUT$" "$testfile" >/dev/null
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent does not duplicate existing keys" {
+  local testfile="$(mktemp /tmp/updatebtw-grub-dup.XXXXXX)"
+  cat > "$testfile" << 'EOF'
+GRUB_DEFAULT=5
+GRUB_TIMEOUT=10
+GRUB_RECORDFAIL_TIMEOUT=10
+GRUB_DISTRIBUTOR="Arch"
+EOF
+
+  set_grub_silent "$testfile"
+
+  local count_default count_timeout count_recordfail
+  count_default="$(grep -c "^GRUB_DEFAULT=" "$testfile" || true)"
+  count_timeout="$(grep -c "^GRUB_TIMEOUT=" "$testfile" || true)"
+  count_recordfail="$(grep -c "^GRUB_RECORDFAIL_TIMEOUT=" "$testfile" || true)"
+
+  [ "$count_default" -eq 1 ]
+  [ "$count_timeout" -eq 1 ]
+  [ "$count_recordfail" -eq 1 ]
+  rm -f "$testfile"
+}
