@@ -41,3 +41,8 @@ _rotate_backups() {
     | tail -n +$((keep + 1)) \
     | xargs rm -f 2>/dev/null || true
 }
+
+_cleanup_old_backups() {
+  [ -d "$UPDATERBTW_BACKUP_DIR" ] || return 0
+  find "$UPDATERBTW_BACKUP_DIR" -type f -mtime +60 -delete 2>/dev/null || true
+}

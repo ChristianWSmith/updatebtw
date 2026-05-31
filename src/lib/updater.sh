@@ -4,6 +4,9 @@ update_packages() {
   trap '_notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' SIGTERM
   read_config
 
+  _cleanup_old_backups 2>/dev/null || true
+  _cleanup_old_logs 2>/dev/null || true
+
   if [ -e /var/lib/pacman/db.lck ]; then
     _notify error "Update Failed" "/var/lib/pacman/db.lck exists"
     return 1
@@ -68,16 +71,33 @@ _notify() {
   local type="$1"
   local summary="$2"
   local body="$3"
+  if [ "$type" = "error" ] && [ -n "$UPDATERBTW_LOG_FILE" ]; then
+    body="$body — see $UPDATERBTW_LOG_FILE"
+  fi
   echo "[$type] $summary: $body"
-  if command -v notify-send >/dev/null 2>&1; then
-    local urgency="normal"
-    local icon="update-none"
-    case "$type" in
-      error)   urgency="critical"; icon="error" ;;
-      success) urgency="normal";   icon="update-none" ;;
-      info)    urgency="low";      icon="update-none" ;;
-    esac
-    notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body"
+  if ! command -v notify-send >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local urgency="normal"
+  local icon="dialog-information"
+  case "$type" in
+    error)    urgency="critical"; icon="dialog-error" ;;
+    success)  urgency="normal";   icon="dialog-information" ;;
+    info)     urgency="low";      icon="dialog-information" ;;
+    critical) urgency="critical"; icon="dialog-warning" ;;
+  esac
+
+  if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    local uid
+    uid=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | head -1)
+    if [ -n "$uid" ] && [ -S "/run/user/$uid/bus" ]; then
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
+    fi
+  fi
+
+  if [ -n "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
   fi
 }
 
@@ -91,4 +111,10 @@ _run_as_user() {
   else
     su - "$user" -c "$*"
   fi
+}
+
+_cleanup_old_logs() {
+  local log_dir="${UPDATERBTW_LOG_DIR:-/var/log/updatebtw}"
+  [ -d "$log_dir" ] || return 0
+  find "$log_dir" -type f -mtime +60 -delete 2>/dev/null || true
 }

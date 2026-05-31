@@ -23,6 +23,13 @@ case "${1:-help}" in
     update_packages
     ;;
   _update)
+    if [ -n "$SYSTEMD_INHIBIT" ]; then
+      UPDATERBTW_LOG_DIR="/var/log/updatebtw"
+      UPDATERBTW_LOG_FILE="$UPDATERBTW_LOG_DIR/$(date +%Y%m%d_%H%M%S).log"
+      export UPDATERBTW_LOG_DIR UPDATERBTW_LOG_FILE
+      mkdir -p "$UPDATERBTW_LOG_DIR"
+      exec >> "$UPDATERBTW_LOG_FILE" 2>&1
+    fi
     . "$UPDATERBTW_ROOT/config.sh"
     . "$UPDATERBTW_ROOT/backup.sh"
     . "$UPDATERBTW_ROOT/updater.sh"
