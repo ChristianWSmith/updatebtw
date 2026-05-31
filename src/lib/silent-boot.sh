@@ -30,7 +30,9 @@ set_kernel_options() {
     backup_file "$entry" 2>/dev/null || true
 
     local tmpfile
-    tmpfile="$(mktemp)"
+    tmpfile="$(mktemp "${entry}.XXXXXX")"
+    chmod 644 "$tmpfile"
+    chown root:root "$tmpfile"
     local line
 
     while IFS= read -r line; do
@@ -59,8 +61,6 @@ set_kernel_options() {
       fi
     done < "$entry"
 
-    chmod 755 "$tmpfile"
-    chown root:root "$tmpfile"
     mv "$tmpfile" "$entry"
   done
 }
@@ -72,7 +72,9 @@ set_grub_silent() {
   backup_file "$grub_cfg" 2>/dev/null || true
 
   local tmpfile
-  tmpfile="$(mktemp)"
+  tmpfile="$(mktemp "${grub_cfg}.XXXXXX")"
+  chmod 644 "$tmpfile"
+  chown root:root "$tmpfile"
 
   local has_default=false has_timeout=false has_recordfail=false
 
@@ -108,8 +110,6 @@ set_grub_silent() {
     printf 'GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT\n' >> "$tmpfile"
   fi
 
-  chmod 644 "$tmpfile"
-  chown root:root "$tmpfile"
   mv "$tmpfile" "$grub_cfg"
 
   if command -v grub-mkconfig >/dev/null 2>&1; then
@@ -132,7 +132,9 @@ patch_mkinitcpio() {
   backup_file "$src" 2>/dev/null || true
 
   local tmpfile
-  tmpfile="$(mktemp)"
+  tmpfile="$(mktemp "${src}.XXXXXX")"
+  chmod 644 "$tmpfile"
+  chown root:root "$tmpfile"
   local line
 
   while IFS= read -r line; do
@@ -170,8 +172,6 @@ patch_mkinitcpio() {
     fi
   done < "$src"
 
-  chmod 644 "$tmpfile"
-  chown root:root "$tmpfile"
   mv "$tmpfile" "$src"
 }
 
@@ -187,7 +187,9 @@ patch_fsck_services() {
     backup_file "$file" 2>/dev/null || true
 
     local tmpfile
-    tmpfile="$(mktemp)"
+    tmpfile="$(mktemp "${file}.XXXXXX")"
+    chmod 644 "$tmpfile"
+    chown root:root "$tmpfile"
     local in_service=false
     local line key
 
@@ -205,8 +207,6 @@ patch_fsck_services() {
       fi
     done < "$file"
 
-    chmod 644 "$tmpfile"
-    chown root:root "$tmpfile"
     mv "$tmpfile" "$file"
   done
 }
@@ -216,10 +216,18 @@ silent_boot() {
   bootloader="$(detect_bootloader)"
   case "$bootloader" in
     systemd-boot)
-      set_kernel_options
+      if [ ! -d /boot/loader/entries ] || [ -z "$(ls /boot/loader/entries/*.conf 2>/dev/null)" ]; then
+        echo "Warning: No systemd-boot entries found — skipping kernel option changes" >&2
+      else
+        set_kernel_options
+      fi
       ;;
     grub)
-      set_grub_silent
+      if [ ! -f /etc/default/grub ]; then
+        echo "Warning: GRUB config not found — skipping GRUB changes" >&2
+      else
+        set_grub_silent
+      fi
       ;;
     unknown)
       echo "Warning: Unknown bootloader — skipping bootloader-specific changes"
@@ -231,7 +239,11 @@ silent_boot() {
   patch_fsck_services
 
   if [ -f /etc/mkinitcpio.conf ] && [ -f /boot/vmlinuz-linux ]; then
-    mkinitcpio -P
+    mkinitcpio -P || {
+      echo "ERROR: mkinitcpio failed — restoring backup of mkinitcpio.conf" >&2
+      restore_file /etc/mkinitcpio.conf 2>/dev/null || true
+      return 1
+    }
   fi
 
   touch ~root/.hushlogin

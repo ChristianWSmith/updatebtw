@@ -2,10 +2,19 @@
 
 UPDATERBTW_STATE_DIR="${UPDATERBTW_STATE_DIR:-/var/lib/updatebtw}"
 : "${UPDATERBTW_MIN_UPDATE_INTERVAL:=300}"
+_update_lock_fd=""
 
 _check_rate_limit() {
   local state_file="$UPDATERBTW_STATE_DIR/last_update"
+  local lock_file="$UPDATERBTW_STATE_DIR/update.lock"
   mkdir -p "$UPDATERBTW_STATE_DIR"
+
+  exec 8> "$lock_file"
+  if ! flock -n 8; then
+    _notify error "Update In Progress" "Another update is already running"
+    return 1
+  fi
+  _update_lock_fd=8
 
   if [ -f "$state_file" ]; then
     local last_update now delta
@@ -38,6 +47,13 @@ update_packages() {
     return 1
   fi
 
+  local pacman_lock="$UPDATERBTW_STATE_DIR/pacman.lock"
+  exec 7> "$pacman_lock"
+  if ! flock -n 7; then
+    _notify error "Update Failed" "Another pacman process holds the database lock"
+    return 1
+  fi
+
   if [ "${ENABLE_REFLECTOR:-true}" = "true" ]; then
     _update_mirrorlist || true
   fi
@@ -65,6 +81,9 @@ update_packages() {
   fi
 
   _notify success "updatebtw" "Update complete"
+  [ -n "$_update_lock_fd" ] && flock -u "$_update_lock_fd" 2>/dev/null || true
+  flock -u 7 2>/dev/null || true
+  rm -f "$pacman_lock" 2>/dev/null || true
 }
 
 _update_mirrorlist() {
@@ -84,10 +103,13 @@ _update_mirrorlist() {
 
   backup_file "$mirrorlist"
   _notify info "updatebtw" "Updating mirrorlist via reflector"
-  if ! reflector --save "$mirrorlist" \
+  if ! timeout 120 reflector --save "$mirrorlist" \
        --country "${REFLECTOR_COUNTRY:-United States}" \
        --protocol "${REFLECTOR_PROTOCOL:-https}" \
-       --latest 5; then
+       --latest 5 \
+       --sort age \
+       --age 12 \
+       --connection-timeout 10; then
     _notify error "Reflector Failed" "Mirrorlist update failed"
     return 1
   fi
@@ -116,7 +138,14 @@ _notify() {
 
   local target_user="${SUDO_USER:-}"
   if [ -z "$target_user" ]; then
-    target_user="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
+    target_user="$(loginctl list-sessions --no-legend 2>/dev/null | while read -r sid uid rest; do
+      local stype
+      stype="$(loginctl show-session "$sid" -p Type --value 2>/dev/null)"
+      if [ "$stype" = "x11" ] || [ "$stype" = "wayland" ]; then
+        id -un "$uid" 2>/dev/null && break
+      fi
+    done)"
+    [ -z "$target_user" ] && target_user="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
     [ -n "$target_user" ] && target_user="$(id -un "$target_user" 2>/dev/null)" || target_user=""
   fi
 
@@ -148,12 +177,11 @@ _run_as_user() {
     "$@"
   elif command -v runuser >/dev/null 2>&1; then
     runuser -u "$user" -- "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo -u "$user" -- "$@"
   else
-    local escaped="" arg
-    for arg in "$@"; do
-      escaped="$escaped $(printf '%q' "$arg")"
-    done
-    su - "$user" -c "$escaped"
+    echo "updatebtw: cannot run as user '$user' — neither runuser nor sudo available" >&2
+    return 1
   fi
 }
 

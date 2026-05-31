@@ -25,6 +25,10 @@ case "${1:-help}" in
     update_packages
     ;;
   _update)
+    if [ -z "$SYSTEMD_INHIBIT" ] && [ -z "$UPDATERBTW_INHIBIT" ]; then
+      echo "updatebtw: _update is an internal command. Use: sudo updatebtw update" >&2
+      exit 1
+    fi
     if [ -n "$SYSTEMD_INHIBIT" ]; then
       UPDATERBTW_LOG_DIR="/var/log/updatebtw"
       UPDATERBTW_LOG_FILE="$UPDATERBTW_LOG_DIR/$(date +%Y%m%d_%H%M%S).log"

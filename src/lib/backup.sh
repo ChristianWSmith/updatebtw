@@ -2,6 +2,7 @@
 
 UPDATERBTW_BACKUP_DIR="${UPDATERBTW_BACKUP_DIR:-/var/lib/updatebtw/backups}"
 UPDATERBTW_BACKUP_KEEP="${UPDATERBTW_BACKUP_KEEP:-10}"
+UPDATERBTW_BACKUP_MANIFEST="${UPDATERBTW_BACKUP_MANIFEST:-/var/lib/updatebtw/backups/.manifest}"
 
 backup_file() {
   local src="$1"
@@ -16,11 +17,24 @@ backup_file() {
   cp -a "$src" "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
   chmod 600 "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
   chown root:root "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}" 2>/dev/null || true
+
+  mkdir -p "$(dirname "$UPDATERBTW_BACKUP_MANIFEST")"
+  grep -qxF "$src" "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || echo "$src" >> "$UPDATERBTW_BACKUP_MANIFEST"
+  chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
+
   _rotate_backups "$name"
 }
 
 restore_file() {
   local src="$1"
+
+  if [ -f "$UPDATERBTW_BACKUP_MANIFEST" ]; then
+    if ! grep -qxF "$src" "$UPDATERBTW_BACKUP_MANIFEST"; then
+      echo "updatebtw: $src has no backup, refusing restore" >&2
+      return 1
+    fi
+  fi
+
   local name
   name="$(basename "$src")"
   local latest
@@ -32,9 +46,9 @@ restore_file() {
 list_backups() {
   local name="${1:-}"
   if [ -n "$name" ]; then
-    ls -1t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null || true
+    find "$UPDATERBTW_BACKUP_DIR" -maxdepth 1 -name "${name}.*" -printf '%f\n' 2>/dev/null | sort -r || true
   else
-    ls -1t "$UPDATERBTW_BACKUP_DIR"/* 2>/dev/null || true
+    find "$UPDATERBTW_BACKUP_DIR" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort -r || true
   fi
 }
 

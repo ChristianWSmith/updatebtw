@@ -10,6 +10,7 @@ chmod 600 "$UPDATERBTW_CONFIG"
 export _UPDATERBTW_CONFIG_ORIG="$UPDATERBTW_CONFIG"
 export UPDATERBTW_BACKUP_DIR="$BACKUP_DIR"
 export UPDATERBTW_BACKUP_KEEP="5"
+export UPDATERBTW_BACKUP_MANIFEST="$BACKUP_DIR/.manifest"
 
 # Source the real modules
 export UPDATERBTW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../src/lib" && pwd)"
@@ -27,6 +28,8 @@ mocks_setup() {
     export _UPDATERBTW_CONFIG_ORIG="$UPDATERBTW_CONFIG"
   fi
   rm -f /var/lib/updatebtw/state/last_update 2>/dev/null || true
+  rm -f /var/lib/updatebtw/state/pacman.lock 2>/dev/null || true
+  # Must be set after sourcing modules (which default to 300)
   export UPDATERBTW_MIN_UPDATE_INTERVAL=0
 }
 
@@ -113,6 +116,12 @@ su() {
   fi
 }
 
+# Mock flock — always succeed
+flock() {
+  echo "flock $*" >> "$MOCK_LOG"
+  return 0
+}
+
 # Mock timeout
 timeout() {
   local duration="$1"
@@ -120,4 +129,4 @@ timeout() {
   "$@"
 }
 
-export -f pacman yay paru flatpak reflector notify-send mkinitcpio runuser su timeout
+export -f pacman yay paru flatpak reflector notify-send mkinitcpio runuser su timeout flock

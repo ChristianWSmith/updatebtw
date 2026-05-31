@@ -45,11 +45,13 @@ _install_aur_helper() {
       useradd -m "$user" 2>/dev/null || true
     fi
     mkdir -p /etc/sudoers.d
-    cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
+    cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
 $user ALL=(root) NOPASSWD: /usr/bin/pacman, /usr/bin/makepkg
 SUDOEOF
-    chmod 440 "/etc/sudoers.d/updatebtw-$user"
+    chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
   fi
+
+  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"' EXIT
 
   rm -rf "/tmp/$helper" 2>/dev/null || true
   if [ "$(id -un)" = "$user" ]; then
@@ -77,7 +79,7 @@ _setup_aur_user() {
     useradd -m "$user" 2>/dev/null || true
   fi
 
-  rm -f "/etc/sudoers.d/$user" 2>/dev/null || true
+  rm -f "/etc/sudoers.d/updatebtw-$user-build" 2>/dev/null || true
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
@@ -166,7 +168,7 @@ tui_main() {
   fi
 
   local summary
-  summary="AUR Helper: $AUR_HELPER\n"
+  summary="AUR Helper: $AUR_HELPER (installed from AUR — verify PKGBUILD manually)\n"
   summary="${summary}Frequency: $UPDATE_FREQUENCY at $UPDATE_TIME\n"
   summary="${summary}Run at boot: $RUN_AT_BOOT\n"
   summary="${summary}Reflector: $ENABLE_REFLECTOR"
