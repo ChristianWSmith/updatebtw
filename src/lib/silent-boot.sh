@@ -41,7 +41,7 @@ set_kernel_options() {
           fi
         done
         out_line="$out_line$kernel_options"
-        printf '%s\n' "$out_line" > "$tmpfile"
+        printf '%s\n' "$out_line" >> "$tmpfile"
       else
         printf '%s\n' "$line" >> "$tmpfile"
       fi

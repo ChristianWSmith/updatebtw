@@ -31,6 +31,21 @@ setup() {
   rm -rf "$testdir"
 }
 
+@test "set_kernel_options preserves entry structure" {
+  local testdir="$(mktemp -d /tmp/updatebtw-testboot.XXXXXX)"
+  local entry="$testdir/arch.conf"
+  cp "$FIXTURES_DIR/boot/loader/entries/arch.conf" "$entry"
+
+  set_kernel_options "$testdir" "quiet loglevel=3 audit=0"
+
+  grep "^title " "$entry" >/dev/null
+  grep "^linux " "$entry" >/dev/null
+  grep "^initrd " "$entry" >/dev/null
+  grep "^options " "$entry" >/dev/null
+
+  rm -rf "$testdir"
+}
+
 @test "set_kernel_options creates backup" {
   local testdir="$(mktemp -d /tmp/updatebtw-testboot.XXXXXX)"
   local entry="$testdir/arch.conf"
