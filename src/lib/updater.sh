@@ -88,16 +88,26 @@ _notify() {
     critical) urgency="critical"; icon="dialog-warning" ;;
   esac
 
-  if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
-    local uid
-    uid=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)
-    if [ -n "$uid" ] && [ -S "/run/user/$uid/bus" ]; then
-      export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
-    fi
-  fi
-
   if [ -n "$DBUS_SESSION_BUS_ADDRESS" ]; then
     notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+    return 0
+  fi
+
+  local uid
+  uid=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)
+  if [ -z "$uid" ] || [ ! -S "/run/user/$uid/bus" ]; then
+    return 0
+  fi
+
+  local username
+  username=$(id -un "$uid" 2>/dev/null) || return 0
+
+  if [ "$(id -un)" = "$username" ]; then
+    notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+  elif command -v runuser >/dev/null 2>&1; then
+    runuser -u "$username" -- notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+  else
+    su - "$username" -c "notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
   fi
 }
 
