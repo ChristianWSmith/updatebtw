@@ -34,7 +34,7 @@ case "${1:-help}" in
       UPDATERBTW_LOG_FILE="$UPDATERBTW_LOG_DIR/$(date +%Y%m%d_%H%M%S).log"
       export UPDATERBTW_LOG_DIR UPDATERBTW_LOG_FILE
       mkdir -p "$UPDATERBTW_LOG_DIR"
-      chmod 750 "$UPDATERBTW_LOG_DIR"
+      chmod 700 "$UPDATERBTW_LOG_DIR"
       umask 0077
       exec >> "$UPDATERBTW_LOG_FILE" 2>&1
     fi
@@ -153,11 +153,12 @@ case "${1:-help}" in
     aur_user="${AUR_USER:-aur_builder}"
     if id "$aur_user" >/dev/null 2>&1; then
       echo "Removing AUR user ($aur_user)..."
-      userdel -r "$aur_user" 2>/dev/null || true
+      userdel "$aur_user" 2>/dev/null || true
+      echo "Note: Home directory for $aur_user was preserved."
     fi
     if [ "$aur_user" != "aur_builder" ] && id "aur_builder" >/dev/null 2>&1; then
       echo "Removing legacy build user (aur_builder)..."
-      userdel -r aur_builder 2>/dev/null || true
+      userdel aur_builder 2>/dev/null || true
     fi
 
     echo "updatebtw has been uninstalled."

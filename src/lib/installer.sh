@@ -56,7 +56,7 @@ _install_aur_helper() {
     fi
     mkdir -p /etc/sudoers.d
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
-$user ALL=(root) NOPASSWD: /usr/bin/pacman, /usr/bin/makepkg
+$user ALL=(root) NOPASSWD: /usr/bin/pacman -Syy --noconfirm, /usr/bin/pacman -Syyu --noconfirm, /usr/bin/pacman -Syyuu --noconfirm, /usr/bin/pacman -S --needed --noconfirm *, /usr/bin/pacman -U --noconfirm *, /usr/bin/pacman -Q *, /usr/bin/pacman -T *
 SUDOEOF
     chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
   fi
@@ -75,7 +75,7 @@ HELPER_TMP="/tmp/$HELPER"
 rm -rf "$HELPER_TMP"
 git clone --depth=1 "https://aur.archlinux.org/$HELPER.git" "$HELPER_TMP"
 cd "$HELPER_TMP"
-makepkg -s --noconfirm
+makepkg -s --noconfirm --keyserver hkps://keys.openpgp.org --pgpfetch
 BUILDEOF
   chmod 755 "$build_script"
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"' EXIT
@@ -111,7 +111,7 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
-$user ALL=(root) NOPASSWD: /usr/bin/pacman
+$user ALL=(root) NOPASSWD: /usr/bin/pacman -Syy --noconfirm, /usr/bin/pacman -Syyu --noconfirm, /usr/bin/pacman -Syyuu --noconfirm, /usr/bin/pacman -S --needed --noconfirm *, /usr/bin/pacman -U --noconfirm *, /usr/bin/pacman -Q *, /usr/bin/pacman -T *
 SUDOEOF
   chmod 440 "/etc/sudoers.d/updatebtw-$user"
 }

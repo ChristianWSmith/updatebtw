@@ -27,7 +27,7 @@ _verify_integrity() {
   fi
 
   local current_hash
-  current_hash="$(sed -n 's/^  echo "\(.*\)" | base64 -d > .*/\1/p' "$0" | sha256sum | awk '{print $1}')"
+  current_hash="$(awk '/^#__END_OF_PAYLOADS__$/{exit} {print}' "$0" | sha256sum | awk '{print $1}')"
 
   if [ -n "$current_hash" ] && [ "$current_hash" != "$SOURCES_HASH" ]; then
     echo "==> updatebtw: WARNING — source integrity check failed!" >&2
@@ -233,7 +233,7 @@ _install_aur_helper() {
     fi
     mkdir -p /etc/sudoers.d
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
-$user ALL=(root) NOPASSWD: /usr/bin/pacman, /usr/bin/makepkg
+$user ALL=(root) NOPASSWD: /usr/bin/pacman -Syy --noconfirm, /usr/bin/pacman -Syyu --noconfirm, /usr/bin/pacman -Syyuu --noconfirm, /usr/bin/pacman -S --needed --noconfirm *, /usr/bin/pacman -U --noconfirm *, /usr/bin/pacman -Q *, /usr/bin/pacman -T *
 SUDOEOF
     chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
   fi
@@ -252,7 +252,7 @@ HELPER_TMP="/tmp/$HELPER"
 rm -rf "$HELPER_TMP"
 git clone --depth=1 "https://aur.archlinux.org/$HELPER.git" "$HELPER_TMP"
 cd "$HELPER_TMP"
-makepkg -s --noconfirm
+makepkg -s --noconfirm --keyserver hkps://keys.openpgp.org --pgpfetch
 BUILDEOF
   chmod 755 "$build_script"
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"' EXIT
@@ -288,7 +288,7 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
-$user ALL=(root) NOPASSWD: /usr/bin/pacman
+$user ALL=(root) NOPASSWD: /usr/bin/pacman -Syy --noconfirm, /usr/bin/pacman -Syyu --noconfirm, /usr/bin/pacman -Syyuu --noconfirm, /usr/bin/pacman -S --needed --noconfirm *, /usr/bin/pacman -U --noconfirm *, /usr/bin/pacman -Q *, /usr/bin/pacman -T *
 SUDOEOF
   chmod 440 "/etc/sudoers.d/updatebtw-$user"
 }
@@ -346,8 +346,8 @@ embed_payload systemd/updatebtw-update.timer /etc/systemd/system/updatebtw-updat
 embed_payload systemd/updatebtw-boot.service /etc/systemd/system/updatebtw-boot.service 644
 embed_payload config/updatebtw.conf /etc/updatebtw/updatebtw.conf 644
 
-# Compute hash from the base64 payloads in the temp installer
-SOURCES_HASH="$(sed -n 's/^  echo "\(.*\)" | base64 -d > .*/\1/p' "$TEMP_INSTALLER" | sha256sum | awk '{print $1}')"
+# Compute hash of everything before the end-of-payloads delimiter
+SOURCES_HASH="$(awk '/^#__END_OF_PAYLOADS__$/{exit} {print}' "$TEMP_INSTALLER" | sha256sum | awk '{print $1}')"
 
 # Replace placeholder hash with actual hash
 sed -i "s/PLACEHOLDER_HASH/$SOURCES_HASH/g" "$TEMP_INSTALLER"
@@ -378,5 +378,6 @@ echo "  fi" >> "$TEMP_INSTALLER"
 echo "}" >> "$TEMP_INSTALLER"
 echo "" >> "$TEMP_INSTALLER"
 echo "main \"\$@\"" >> "$TEMP_INSTALLER"
+echo "#__END_OF_PAYLOADS__" >> "$TEMP_INSTALLER"
 
 cat "$TEMP_INSTALLER"

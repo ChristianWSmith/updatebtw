@@ -76,7 +76,15 @@ update_packages() {
   fi
 
   if command -v flatpak >/dev/null 2>&1; then
-    local flatpak_user="${FLATPAK_USER:-$aur_user}"
+    local flatpak_user="${FLATPAK_USER:-}"
+    if [ -z "$flatpak_user" ]; then
+      flatpak_user="${SUDO_USER:-}"
+    fi
+    if [ -z "$flatpak_user" ]; then
+      flatpak_user="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
+      [ -n "$flatpak_user" ] && flatpak_user="$(id -un "$flatpak_user" 2>/dev/null)" || flatpak_user=""
+    fi
+    [ -z "$flatpak_user" ] && flatpak_user="$aur_user"
     _run_as_user "$flatpak_user" flatpak update --noninteractive || {
       _notify error "Flatpak Update Failed" "flatpak exited with code $?"
       return 1
@@ -91,7 +99,12 @@ update_packages() {
 
 _update_mirrorlist() {
   local mirrorlist="/etc/pacman.d/mirrorlist"
-  local interval=$(( ${REFLECTOR_INTERVAL:-30} * 86400 ))
+  local interval_days="${REFLECTOR_INTERVAL:-30}"
+  # Clamp to sane bounds to prevent overflow or bypass
+  if ! [ "$interval_days" -ge 0 ] 2>/dev/null || ! [ "$interval_days" -le 3650 ] 2>/dev/null; then
+    interval_days=30
+  fi
+  local interval=$(( interval_days * 86400 ))
 
   if [ -f "$mirrorlist" ]; then
     local last_update
@@ -172,8 +185,6 @@ _notify() {
           XDG_RUNTIME_DIR="/run/user/$uid" \
           DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
           notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
-      else
-        su - "$target_user" -c "XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=$bus_path notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
       fi
     fi
   else

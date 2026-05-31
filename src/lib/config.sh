@@ -20,24 +20,37 @@ _safe_read_config() {
     return 1
   fi
 
-  local perms
-  perms="$(stat -c '%a' "$cfg" 2>/dev/null)" || return 1
-  if [ "$perms" != "600" ] && [ "$perms" != "400" ]; then
-    echo "updatebtw: config $cfg has unsafe permissions ($perms), expected 600 or 400" >&2
-    return 1
-  fi
+  local real_path
+  real_path="$(readlink -f "$cfg" 2>/dev/null)" || return 1
 
-  local owner
-  owner="$(stat -c '%U' "$cfg" 2>/dev/null)" || return 1
-  if [ "$owner" != "root" ]; then
-    echo "updatebtw: config $cfg is not owned by root (owned by $owner)" >&2
-    return 1
-  fi
-
-  # Open fd 8 for reading before any further processing to mitigate TOCTOU.
-  # Once the fd is open, the kernel holds a reference to the original inode,
-  # so swapping the file path won't affect what we read.
+  # Open fd FIRST — kernel holds reference to the inode from this point
   exec 8< "$cfg"
+
+  # Validate via /proc/self/fd/8 to eliminate TOCTOU between stat and open
+  # Use -L to follow the /proc/self/fd/N symlink to the actual file
+  local perms owner
+  perms="$(stat -L -c '%a' /proc/self/fd/8 2>/dev/null)" || { exec 8<&-; return 1; }
+  if [ "$perms" != "600" ] && [ "$perms" != "400" ]; then
+    echo "updatebtw: config has unsafe permissions ($perms), expected 600 or 400" >&2
+    exec 8<&-
+    return 1
+  fi
+
+  owner="$(stat -L -c '%U' /proc/self/fd/8 2>/dev/null)" || { exec 8<&-; return 1; }
+  if [ "$owner" != "root" ]; then
+    echo "updatebtw: config is not owned by root (owned by $owner)" >&2
+    exec 8<&-
+    return 1
+  fi
+
+  # Verify the opened fd resolves to the same inode we expected
+  local fd_real_path
+  fd_real_path="$(readlink -f /proc/self/fd/8 2>/dev/null)" || { exec 8<&-; return 1; }
+  if [ "$fd_real_path" != "$real_path" ]; then
+    echo "updatebtw: config file resolved to unexpected path, refusing" >&2
+    exec 8<&-
+    return 1
+  fi
 
   local line key value
   while IFS= read -r line <&8; do
