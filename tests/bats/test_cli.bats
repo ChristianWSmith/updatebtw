@@ -9,14 +9,6 @@ setup() {
   : > "$MOCK_LOG"
 }
 
-# Override systemd-inhibit for testing (it requires logind D-Bus)
-systemd-inhibit() {
-  echo "systemd-inhibit $*" >> "$MOCK_LOG"
-  shift
-  eval "$@"
-}
-export -f systemd-inhibit
-
 @test "cli help prints usage" {
   run "$CLI" help
   [ "$status" -eq 0 ]
@@ -57,6 +49,7 @@ export -f systemd-inhibit
 }
 
 @test "cli update dispatches yay" {
+  export AUR_USER="root"
   yay() { echo "yay $*" >> "$MOCK_LOG"; return 0; }
   flatpak() { echo "flatpak $*" >> "$MOCK_LOG"; return 0; }
   notify-send() { echo "notify-send $*" >> "$MOCK_LOG"; return 0; }
@@ -68,6 +61,7 @@ export -f systemd-inhibit
 }
 
 @test "cli update dispatchs paru when configured" {
+  export AUR_USER="root"
   export UPDATERBTW_CONFIG="/tmp/test_cli_paru.conf"
   cat > "$UPDATERBTW_CONFIG" << 'EOF'
 AUR_HELPER="paru"
@@ -96,6 +90,7 @@ EOF
 }
 
 @test "cli update runs flatpak" {
+  export AUR_USER="root"
   yay() { echo "yay $*" >> "$MOCK_LOG"; return 0; }
   flatpak() { echo "flatpak $*" >> "$MOCK_LOG"; return 0; }
   notify-send() { echo "notify-send $*" >> "$MOCK_LOG"; return 0; }
@@ -105,11 +100,9 @@ EOF
   grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
 }
 
-@test "cli update with SYSTEMD_INHIBIT invokes systemd-inhibit" {
-  export SYSTEMD_INHIBIT=1
+@test "cli update wraps in systemd-inhibit" {
   export UPDATERBTW_ROOT="/opt/updatebtw/src/lib"
-  # Mock systemd-inhibit — since exec replaces the process, we write args and
-  # re-exec the CLI without SYSTEMD_INHIBIT to test the full chain.
+  # Mock systemd-inhibit that logs args and runs the command
   cat > /tmp/systemd-inhibit << 'SCRIPT'
 #!/bin/sh
 echo "systemd-inhibit $*" >> /tmp/mock_log
@@ -129,6 +122,7 @@ echo "$(basename $0) $*" >> /tmp/mock_log
 SUB
     chmod +x "/tmp/$cmd"
   done
+  touch /tmp/mock_log && chmod 666 /tmp/mock_log
   # Disable reflector by writing a fresh mirrorlist
   mkdir -p /etc/pacman.d
   date +"Server = https://example.com" > /etc/pacman.d/mirrorlist
@@ -153,4 +147,46 @@ SUB
 @test "cli backup restore fails for nonexistent file" {
   run "$CLI" backup restore /nonexistent/path
   [ "$status" -eq 1 ]
+}
+
+@test "cli reflector updates mirrorlist" {
+  # Create an old mirrorlist so reflector actually runs
+  mkdir -p /etc/pacman.d
+  echo "Server = https://example.com" > /etc/pacman.d/mirrorlist
+  touch -t 202001010000 /etc/pacman.d/mirrorlist
+
+  reflector() { echo "reflector $*" >> "$MOCK_LOG"; return 0; }
+  export -f reflector
+
+  run "$CLI" reflector
+  [ "$status" -eq 0 ]
+  grep "reflector" "$MOCK_LOG" >/dev/null
+}
+
+@test "cli on enables timer" {
+  cat > /tmp/systemctl << 'SCRIPT'
+#!/bin/sh
+echo "systemctl $*" >> /tmp/mock_log
+SCRIPT
+  chmod +x /tmp/systemctl
+  export PATH="/tmp:$PATH"
+  touch /tmp/mock_log && chmod 666 /tmp/mock_log
+
+  run "$CLI" on
+  [ "$status" -eq 0 ]
+  grep "systemctl enable --now updatebtw-update.timer" /tmp/mock_log >/dev/null
+}
+
+@test "cli off disables timer" {
+  cat > /tmp/systemctl << 'SCRIPT'
+#!/bin/sh
+echo "systemctl $*" >> /tmp/mock_log
+SCRIPT
+  chmod +x /tmp/systemctl
+  export PATH="/tmp:$PATH"
+  touch /tmp/mock_log && chmod 666 /tmp/mock_log
+
+  run "$CLI" off
+  [ "$status" -eq 0 ]
+  grep "systemctl disable --now updatebtw-update.timer" /tmp/mock_log >/dev/null
 }

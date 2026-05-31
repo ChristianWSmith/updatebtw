@@ -7,7 +7,6 @@ export BACKUP_DIR="$(mktemp -d /tmp/updatebtw-backup.XXXXXX)"
 # Override config path for testing
 export UPDATERBTW_CONFIG="$(mktemp /tmp/updatebtw-config.XXXXXX)"
 export UPDATERBTW_BACKUP_DIR="$BACKUP_DIR"
-export AUR_USER="${AUR_USER:-root}"
 export UPDATERBTW_BACKUP_KEEP="5"
 
 # Source the real modules
@@ -69,4 +68,33 @@ notify-send() {
 mkinitcpio() {
   echo "mkinitcpio $*" >> "$MOCK_LOG"
   return 0
+}
+
+# Mock runuser — intercept user switching, execute command directly
+runuser() {
+  echo "runuser $*" >> "$MOCK_LOG"
+  local args=() after_dd=false
+  for arg in "$@"; do
+    if $after_dd; then
+      args+=("$arg")
+    fi
+    [ "$arg" = "--" ] && after_dd=true
+  done
+  "${args[@]}"
+}
+
+# Mock su — intercept user switching, execute command directly
+su() {
+  echo "su $*" >> "$MOCK_LOG"
+  local cmd="" next=false
+  for arg in "$@"; do
+    if $next; then
+      cmd="$arg"
+      break
+    fi
+    [ "$arg" = "-c" ] && next=true
+  done
+  if [ -n "$cmd" ]; then
+    eval "$cmd"
+  fi
 }

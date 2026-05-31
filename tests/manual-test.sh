@@ -15,5 +15,6 @@ echo ""
 docker run -it --rm \
   --name "updatebtw-manual" \
   -v "$(pwd):/opt/updatebtw" \
+  --user test_user \
   updatebtw-test \
-  sh -c '/opt/updatebtw/installer.sh; echo "=== Installer finished, dropping to shell ==="; exec /bin/bash'
+  sh -c 'sudo /opt/updatebtw/installer.sh; echo "=== Installer finished ==="; echo "Run:  sudo updatebtw update  to test an update"; exec /bin/bash'

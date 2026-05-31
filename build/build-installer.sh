@@ -53,22 +53,29 @@ _check_deps() {
 }
 
 _install_aur_helper() {
-  local helper="$1"
+  local helper="$1" user="$2"
   command -v "$helper" >/dev/null 2>&1 && return 0
 
-  local build_user="aur_builder"
-  if ! id "$build_user" >/dev/null 2>&1; then
-    useradd -m "$build_user" 2>/dev/null || true
+  if [ "$(id -un)" != "$user" ]; then
+    if ! id "$user" >/dev/null 2>&1; then
+      useradd -m "$user" 2>/dev/null || true
+    fi
     mkdir -p /etc/sudoers.d
-    echo "$build_user ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/$build_user 2>/dev/null || true
+    echo "$user ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$user" 2>/dev/null || true
   fi
 
   rm -rf "/tmp/$helper" 2>/dev/null || true
-  su - "$build_user" -c "
-    git clone --depth=1 https://aur.archlinux.org/$helper.git /tmp/$helper 2>/dev/null
-    cd /tmp/$helper
-    makepkg -si --noconfirm 2>/dev/null
-  " && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
+  if [ "$(id -un)" = "$user" ]; then
+    git clone --depth=1 "https://aur.archlinux.org/$helper.git" "/tmp/$helper"
+    cd "/tmp/$helper"
+    makepkg -si --noconfirm
+  else
+    su - "$user" -c "
+      git clone --depth=1 https://aur.archlinux.org/$helper.git /tmp/$helper
+      cd /tmp/$helper
+      makepkg -si --noconfirm
+    "
+  fi && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
 
   command -v "$helper" >/dev/null 2>&1
 }
@@ -91,20 +98,25 @@ main() {
   _check_deps
 
   whiptail --title "updatebtw" --msgbox \
-    "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nThis installer will configure automatic system updates on your system." \
-    10 60
+    "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nNOTE: This project is NOT affiliated with or endorsed by Arch Linux.\nIt is an unofficial third-party tool.\n\nThis installer will configure automatic system updates on your system." \
+    12 60
 
   local freq_choice
 
   AUR_HELPER=$(whiptail --title "AUR Helper" --radiolist \
-    "Select your preferred AUR helper:" 12 50 2 \
+    "Select your preferred AUR helper:" 12 65 2 \
     "yay"  "Original Go-based AUR helper (recommended)" ON \
-    "paru" "Modern Rust-based AUR helper"          OFF \
+    "paru" "Modern Rust-based AUR helper"             OFF \
      3>&1 1>&2 2>&3) || exit 1
 
   local detected_user="aur_builder"
   AUR_USER=$(whiptail --title "AUR User" --inputbox \
-    "Run AUR helper and flatpak updates as which user?" 8 60 "$detected_user" \
+    "Run AUR helpers (yay/paru) as which user?\n\nThis user will be created if it doesn't already exist.\nWe do NOT recommend using your personal user account." 10 60 "$detected_user" \
+    3>&1 1>&2 2>&3) || exit 1
+
+  local detected_flatpak_user="${SUDO_USER:-$(id -un)}"
+  FLATPAK_USER=$(whiptail --title "Flatpak User" --inputbox \
+    "Run flatpak updates as which user?\n\nThis should be your personal user account,\nsince flatpak installs per-user packages." 10 60 "$detected_flatpak_user" \
     3>&1 1>&2 2>&3) || exit 1
 
   freq_choice=$(whiptail --title "Update Frequency" --radiolist \
@@ -132,6 +144,9 @@ main() {
     REFLECTOR_COUNTRY=$(whiptail --title "Mirror Country" --inputbox \
       "Mirror country (e.g. 'United States', 'Germany'):" 8 60 "United States" \
       3>&1 1>&2 2>&3) || exit 1
+    REFLECTOR_INTERVAL=$(whiptail --title "Mirror Update Interval" --inputbox \
+      "How often (in days) should the mirrorlist be refreshed?" 8 60 "30" \
+      3>&1 1>&2 2>&3) || exit 1
   else
     ENABLE_REFLECTOR="false"
   fi
@@ -149,32 +164,35 @@ main() {
   summary="${summary}Run at boot: $RUN_AT_BOOT\n"
   summary="${summary}Reflector: $ENABLE_REFLECTOR"
   if [ "$ENABLE_REFLECTOR" = "true" ]; then
-    summary="${summary} (country: $REFLECTOR_COUNTRY)\n"
+    summary="${summary} (country: $REFLECTOR_COUNTRY, interval: ${REFLECTOR_INTERVAL:-30}d)\n"
   else
     summary="${summary}\n"
   fi
   summary="${summary}AUR user: $AUR_USER\n"
+  summary="${summary}Flatpak user: $FLATPAK_USER\n"
   summary="${summary}Silent boot: $SILENT_BOOT\n"
 
   if ! whiptail --title "Confirm" --yesno "Apply the following configuration?\n\n${summary}" 16 65; then
     exit 0
   fi
 
-  (
-    echo "5:Installing AUR helper..."
-    _install_aur_helper "$AUR_HELPER" >/dev/null 2>&1 || true
-    echo "15:Configuring AUR user..."
-    _setup_aur_user "$AUR_USER" >/dev/null 2>&1 || true
-    echo "25:Writing configuration..."
-    write_config
-    echo "45:Installing system files..."
-    install_system_files
-    echo "65:Installing systemd units..."
-    install_systemd_units
-    echo "85:Enabling timer..."
-    enable_timer
-    echo "100:Install complete"
-  ) | whiptail --title "Installing" --gauge "Starting..." 8 50 0
+  echo "Installing AUR helper..."
+  _install_aur_helper "$AUR_HELPER" "$AUR_USER" || true
+  echo "Configuring AUR user..."
+  _setup_aur_user "$AUR_USER" >/dev/null 2>&1 || true
+  echo "Writing configuration..."
+  write_config
+  if [ "$ENABLE_REFLECTOR" = "true" ] && ! command -v reflector >/dev/null 2>&1; then
+    echo "Installing reflector..."
+    pacman -S --needed --noconfirm reflector >/dev/null 2>&1 || true
+  fi
+  echo "Installing system files..."
+  install_system_files
+  echo "Installing systemd units..."
+  install_systemd_units
+  echo "Enabling timer..."
+  enable_timer
+  echo "Done."
 
   if [ "$SILENT_BOOT" = "true" ]; then
     silent_boot
@@ -256,7 +274,7 @@ echo "  install_etc_systemd_system_updatebtw_boot_service"
 echo "}"
 echo ""
 echo "enable_timer() {"
-echo "  systemctl daemon-reload"
+echo "  systemctl daemon-reload 2>/dev/null || true"
 echo "  systemctl enable --now updatebtw-update.timer 2>/dev/null || true"
 echo '  if [ "$RUN_AT_BOOT" = "true" ]; then'
 echo "    systemctl enable updatebtw-boot.service 2>/dev/null || true"

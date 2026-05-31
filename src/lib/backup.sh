@@ -30,7 +30,7 @@ list_backups() {
   if [ -n "$name" ]; then
     ls -1t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null || true
   else
-    ls -1t "$UPDATERBTW_BACKUP_DIR/" 2>/dev/null || true
+    ls -1t "$UPDATERBTW_BACKUP_DIR"/* 2>/dev/null || true
   fi
 }
 

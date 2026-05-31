@@ -2,6 +2,7 @@
 
 UPDATERBTW_CONFIG="${UPDATERBTW_CONFIG:-/etc/updatebtw/updatebtw.conf}"
 AUR_USER="${AUR_USER:-aur_builder}"
+FLATPAK_USER="${FLATPAK_USER:-${AUR_USER:-aur_builder}}"
 
 read_config() {
   [ -f "$UPDATERBTW_CONFIG" ] && . "$UPDATERBTW_CONFIG" || true
@@ -25,6 +26,7 @@ REFLECTOR_PROTOCOL="${REFLECTOR_PROTOCOL:-https}"
 REFLECTOR_INTERVAL="${REFLECTOR_INTERVAL:-30}"
 SILENT_BOOT="${SILENT_BOOT:-false}"
 AUR_USER="${AUR_USER:-aur_builder}"
+FLATPAK_USER="${FLATPAK_USER:-${SUDO_USER:-$(id -un)}}"
 EOF
 }
 

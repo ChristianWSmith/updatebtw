@@ -6,13 +6,23 @@ export UPDATERBTW_ROOT
 
 case "${1:-help}" in
   update)
-    if [ -n "$SYSTEMD_INHIBIT" ]; then
-      exec systemd-inhibit --what=shutdown:sleep \
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "updatebtw: update requires root. Use: sudo updatebtw update" >&2
+      exit 1
+    fi
+    if [ -z "$UPDATERBTW_INHIBIT" ] && command -v systemd-inhibit >/dev/null 2>&1; then
+      systemd-inhibit --what=shutdown:sleep \
         --who="updatebtw" \
         --why="Running system update" \
         --mode=block \
-        env -u SYSTEMD_INHIBIT "$0" update
+        env -u UPDATERBTW_INHIBIT "$0" _update && exit 0
     fi
+    . "$UPDATERBTW_ROOT/config.sh"
+    . "$UPDATERBTW_ROOT/backup.sh"
+    . "$UPDATERBTW_ROOT/updater.sh"
+    update_packages
+    ;;
+  _update)
     . "$UPDATERBTW_ROOT/config.sh"
     . "$UPDATERBTW_ROOT/backup.sh"
     . "$UPDATERBTW_ROOT/updater.sh"
@@ -25,6 +35,16 @@ case "${1:-help}" in
     . "$UPDATERBTW_ROOT/installer.sh"
     tui_main
     ;;
+  reflector)
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "updatebtw: reflector requires root. Use: sudo updatebtw reflector" >&2
+      exit 1
+    fi
+    . "$UPDATERBTW_ROOT/config.sh"
+    . "$UPDATERBTW_ROOT/backup.sh"
+    . "$UPDATERBTW_ROOT/updater.sh"
+    REFLECTOR_INTERVAL=0 _update_mirrorlist
+    ;;
   status)
     . "$UPDATERBTW_ROOT/config.sh"
     read_config
@@ -35,8 +55,10 @@ case "${1:-help}" in
     echo "  RUN_AT_BOOT=${RUN_AT_BOOT:-false}"
     echo "  ENABLE_REFLECTOR=${ENABLE_REFLECTOR:-true}"
     echo "  REFLECTOR_COUNTRY=${REFLECTOR_COUNTRY:-United States}"
+    echo "  REFLECTOR_INTERVAL=${REFLECTOR_INTERVAL:-30}"
     echo "  SILENT_BOOT=${SILENT_BOOT:-false}"
     echo "  AUR_USER=${AUR_USER:-aur_builder}"
+    echo "  FLATPAK_USER=${FLATPAK_USER:-${AUR_USER:-aur_builder}}"
     ;;
   backup)
     . "$UPDATERBTW_ROOT/backup.sh"
@@ -53,6 +75,71 @@ case "${1:-help}" in
       *) echo "Usage: updatebtw backup list|restore <path>" >&2; exit 1 ;;
     esac
     ;;
+  on)
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "updatebtw: on requires root. Use: sudo updatebtw on" >&2
+      exit 1
+    fi
+    systemctl enable --now updatebtw-update.timer 2>/dev/null || true
+    if systemctl is-enabled updatebtw-update.timer >/dev/null 2>&1; then
+      echo "Automatic updates enabled."
+    else
+      echo "Failed to enable automatic updates."
+    fi
+    ;;
+  off)
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "updatebtw: off requires root. Use: sudo updatebtw off" >&2
+      exit 1
+    fi
+    systemctl disable --now updatebtw-update.timer 2>/dev/null || true
+    if ! systemctl is-enabled updatebtw-update.timer >/dev/null 2>&1; then
+      echo "Automatic updates disabled."
+    else
+      echo "Failed to disable automatic updates."
+    fi
+    ;;
+  uninstall)
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "updatebtw: uninstall requires root. Use: sudo updatebtw uninstall" >&2
+      exit 1
+    fi
+    echo "Stopping and disabling services..."
+    systemctl disable --now updatebtw-update.timer 2>/dev/null || true
+    systemctl disable --now updatebtw-boot.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
+    if [ -f "$UPDATERBTW_ROOT/config.sh" ]; then
+      . "$UPDATERBTW_ROOT/config.sh"
+      read_config 2>/dev/null || true
+    fi
+
+    echo "Removing systemd units..."
+    rm -f /etc/systemd/system/updatebtw-update.service /etc/systemd/system/updatebtw-update.timer /etc/systemd/system/updatebtw-boot.service
+
+    echo "Removing binaries and libraries..."
+    rm -f /usr/bin/updatebtw /usr/local/bin/updatebtw
+    rm -rf /usr/lib/updatebtw /usr/local/lib/updatebtw
+
+    echo "Removing configuration..."
+    rm -rf /etc/updatebtw
+
+    echo "Removing sudoers rules..."
+    rm -f /etc/sudoers.d/updatebtw-*
+
+    aur_user="${AUR_USER:-aur_builder}"
+    if id "$aur_user" >/dev/null 2>&1; then
+      echo "Removing AUR user ($aur_user)..."
+      userdel -r "$aur_user" 2>/dev/null || true
+    fi
+    if [ "$aur_user" != "aur_builder" ] && id "aur_builder" >/dev/null 2>&1; then
+      echo "Removing legacy build user (aur_builder)..."
+      userdel -r aur_builder 2>/dev/null || true
+    fi
+
+    echo "updatebtw has been uninstalled."
+    echo "Backups in /var/lib/updatebtw/backups were left intact."
+    ;;
   help|--help|-h|*)
     cat << 'HELP'
 usage: updatebtw <command>
@@ -60,9 +147,13 @@ usage: updatebtw <command>
 commands:
   update       Run system update now
   install      Run TUI installer/reconfigure
+  on           Enable automatic updates
+  off          Disable automatic updates
+  reflector    Update mirrorlist via reflector now
   status       Show current configuration
   backup list  List available backups
   backup restore <path>  Restore a file from backup
+  uninstall    Remove updatebtw (keeps backups)
   help         Show this help message
 HELP
     ;;

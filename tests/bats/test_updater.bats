@@ -89,3 +89,56 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"[info] test: body"* ]]
 }
+
+@test "_run_as_user executes directly when already target user" {
+  run _run_as_user root echo hello
+  [ "$status" -eq 0 ]
+  [[ "$output" == "hello" ]]
+}
+
+@test "_run_as_user invokes runuser for different user" {
+  run _run_as_user aur_builder echo hello
+  [ "$status" -eq 0 ]
+  [[ "$output" == "hello" ]]
+  grep "runuser -u aur_builder" "$MOCK_LOG" >/dev/null
+}
+
+@test "update_packages runs yay as configured user" {
+  AUR_HELPER="yay"
+  AUR_USER="aur_builder"
+  UPDATE_FREQUENCY="weekly"
+  ENABLE_REFLECTOR="false"
+  write_config
+
+  run update_packages
+  [ "$status" -eq 0 ]
+  grep "yay -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
+  grep "runuser -u aur_builder" "$MOCK_LOG" >/dev/null
+}
+
+@test "update_packages runs flatpak as configured user" {
+  AUR_HELPER="yay"
+  AUR_USER="aur_builder"
+  FLATPAK_USER="aur_builder"
+  UPDATE_FREQUENCY="weekly"
+  ENABLE_REFLECTOR="false"
+  write_config
+
+  run update_packages
+  grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "runuser -u aur_builder -- flatpak" "$MOCK_LOG" >/dev/null
+}
+
+@test "update_packages runs flatpak as FLATPAK_USER when different from AUR_USER" {
+  AUR_HELPER="yay"
+  AUR_USER="aur_builder"
+  FLATPAK_USER="builder"
+  UPDATE_FREQUENCY="weekly"
+  ENABLE_REFLECTOR="false"
+  write_config
+
+  run update_packages
+  grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "runuser -u builder -- flatpak" "$MOCK_LOG" >/dev/null
+  ! grep "runuser -u aur_builder -- flatpak" "$MOCK_LOG" >/dev/null
+}

@@ -1,6 +1,7 @@
 # updatebtw updater module
 
 update_packages() {
+  trap '_notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' SIGTERM
   read_config
 
   if [ -e /var/lib/pacman/db.lck ]; then
@@ -27,7 +28,8 @@ update_packages() {
   fi
 
   if command -v flatpak >/dev/null 2>&1; then
-    _run_as_user "$aur_user" flatpak update --noninteractive || {
+    local flatpak_user="${FLATPAK_USER:-$aur_user}"
+    _run_as_user "$flatpak_user" flatpak update --noninteractive || {
       _notify error "Flatpak Update Failed" "flatpak exited with code $?"
       return 1
     }

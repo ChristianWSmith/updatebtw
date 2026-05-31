@@ -8,9 +8,12 @@ RUN pacman -Syu --noconfirm && \
       procps-ng \
     && pacman -Scc --noconfirm
 
-# Create test user (for running pacman/yay tests if needed)
+# Create test users (for running pacman/yay tests if needed)
 RUN useradd -m builder && \
     echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+RUN useradd -m aur_builder
+RUN useradd -m test_user && \
+    echo "test_user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Create mock directories
 RUN mkdir -p /var/lib/pacman /etc/pacman.d /boot/loader/entries
