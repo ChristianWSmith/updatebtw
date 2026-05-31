@@ -1,9 +1,14 @@
 load ../helpers/mocks.sh
 
 setup() {
+  mocks_setup
   . "$UPDATERBTW_ROOT/config.sh"
   . "$UPDATERBTW_ROOT/backup.sh"
   . "$UPDATERBTW_ROOT/updater.sh"
+}
+
+teardown() {
+  mocks_teardown
 }
 
 @test "update_packages fails when db.lck exists" {

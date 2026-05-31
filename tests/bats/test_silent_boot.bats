@@ -5,8 +5,13 @@ setup_file() {
 }
 
 setup() {
+  mocks_setup
   . "$UPDATERBTW_ROOT/backup.sh"
   . "$UPDATERBTW_ROOT/silent-boot.sh"
+}
+
+teardown() {
+  mocks_teardown
 }
 
 @test "set_kernel_options removes existing options and adds new ones" {
@@ -79,14 +84,14 @@ setup() {
   rm -rf "/tmp/updatebtw-printk-test"
 }
 
-@test "patch_mkinitcpio replaces udev with systemd fsck" {
+@test "patch_mkinitcpio replaces udev with systemd and removes fsck" {
   local testfile="$(mktemp /tmp/updatebtw-mkinitcpio.XXXXXX)"
   cp "$FIXTURES_DIR/etc/mkinitcpio.conf" "$testfile"
 
   patch_mkinitcpio "$testfile"
 
-  # udev replaced with systemd fsck, duplicate fsck removed
-  grep -E "HOOKS=\(base systemd fsck autodetect modconf block filesystems keyboard\s*\)" "$testfile" >/dev/null
+  # udev replaced with systemd, fsck removed per Arch Wiki
+  grep -E "HOOKS=\(base systemd autodetect modconf block filesystems keyboard\s*\)" "$testfile" >/dev/null
   rm -f "$testfile"
 }
 

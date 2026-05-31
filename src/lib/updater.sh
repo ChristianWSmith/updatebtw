@@ -1,8 +1,34 @@
 # updatebtw updater module
 
+UPDATERBTW_STATE_DIR="${UPDATERBTW_STATE_DIR:-/var/lib/updatebtw}"
+: "${UPDATERBTW_MIN_UPDATE_INTERVAL:=300}"
+
+_check_rate_limit() {
+  local state_file="$UPDATERBTW_STATE_DIR/last_update"
+  mkdir -p "$UPDATERBTW_STATE_DIR"
+
+  if [ -f "$state_file" ]; then
+    local last_update now delta
+    last_update="$(cat "$state_file")"
+    now="$(date "+%s")"
+    delta=$(( now - last_update ))
+    if [ "$delta" -lt "$UPDATERBTW_MIN_UPDATE_INTERVAL" ]; then
+      _notify error "Update Throttled" "Last update was $(( delta ))s ago, minimum interval is ${UPDATERBTW_MIN_UPDATE_INTERVAL}s"
+      return 1
+    fi
+  fi
+
+  date "+%s" > "$state_file"
+  return 0
+}
+
 update_packages() {
   trap '_notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' SIGTERM
   read_config
+
+  if ! _check_rate_limit; then
+    return 1
+  fi
 
   _cleanup_old_backups 2>/dev/null || true
   _cleanup_old_logs 2>/dev/null || true
@@ -88,30 +114,31 @@ _notify() {
     critical) urgency="critical"; icon="dialog-warning" ;;
   esac
 
-  if [ -n "$DBUS_SESSION_BUS_ADDRESS" ]; then
-    notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
-    return 0
+  local target_user="${SUDO_USER:-}"
+  if [ -z "$target_user" ]; then
+    target_user="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
+    [ -n "$target_user" ] && target_user="$(id -un "$target_user" 2>/dev/null)" || target_user=""
   fi
 
-  local uid
-  uid=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)
-  if [ -z "$uid" ] || [ ! -S "/run/user/$uid/bus" ]; then
-    return 0
-  fi
-
-  local username
-  username=$(id -un "$uid" 2>/dev/null) || return 0
-
-  if [ "$(id -un)" = "$username" ]; then
-    notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
-  elif command -v runuser >/dev/null 2>&1; then
-    runuser -u "$username" -- env \
-      XDG_RUNTIME_DIR="/run/user/$uid" \
-      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
-      notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+  if [ -n "$target_user" ]; then
+    local uid
+    uid="$(id -u "$target_user" 2>/dev/null)" || return 0
+    if [ -S "/run/user/$uid/bus" ]; then
+      if [ "$(id -un)" = "$target_user" ]; then
+        notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+      elif command -v runuser >/dev/null 2>&1; then
+        runuser -u "$target_user" -- env \
+          XDG_RUNTIME_DIR="/run/user/$uid" \
+          DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+          notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+      else
+        su - "$target_user" -c "XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
+      fi
+    fi
   else
-    su - "$username" -c "XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
+    notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
   fi
+  return 0
 }
 
 _run_as_user() {
@@ -122,7 +149,11 @@ _run_as_user() {
   elif command -v runuser >/dev/null 2>&1; then
     runuser -u "$user" -- "$@"
   else
-    su - "$user" -c "$*"
+    local escaped="" arg
+    for arg in "$@"; do
+      escaped="$escaped $(printf '%q' "$arg")"
+    done
+    su - "$user" -c "$escaped"
   fi
 }
 

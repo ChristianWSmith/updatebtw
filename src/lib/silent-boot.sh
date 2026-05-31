@@ -1,5 +1,7 @@
 # updatebtw silent boot module
 
+BLACKLIST_MODULES="${BLACKLIST_MODULES:-sp5100_tco}"
+
 detect_bootloader() {
   [ -f /boot/loader/loader.conf ] && echo "systemd-boot" && return 0
   [ -f /etc/default/grub ] && echo "grub" && return 0
@@ -9,7 +11,10 @@ detect_bootloader() {
 
 set_kernel_options() {
   local entries_dir="${1:-/boot/loader/entries}"
-  local kernel_options="${2:-quiet loglevel=3 vt.global_cursor_default=0 systemd.show_status=auto rd.udev.log_level=3 nowatchdog modprobe.blacklist=sp5100_tco audit=0}"
+  local kernel_options="${2:-quiet loglevel=3 vt.global_cursor_default=0 systemd.show_status=auto rd.udev.log_level=3}"
+  if [ -n "$BLACKLIST_MODULES" ]; then
+    kernel_options="$kernel_options modprobe.blacklist=$BLACKLIST_MODULES"
+  fi
 
   read -ra option_tokens <<< "$kernel_options"
   local option_keys=()
@@ -134,11 +139,32 @@ patch_mkinitcpio() {
     local key="${line%%=*}"
     key="${key## }"
     if [ "$key" = "HOOKS" ]; then
-      local new_line
-      new_line="$(printf '%s\n' "$line" | sed 's/udev/systemd fsck/g')"
-      new_line="$(printf '%s\n' "$new_line" | sed 's/\(.*\)fsck\(.*\)fsck\(.*\)/\1fsck\2\3/g')"
-      new_line="$(printf '%s\n' "$new_line" | sed 's/  / /g')"
-      printf '%s\n' "$new_line" >> "$tmpfile"
+      local result="" trailing_paren="" token
+      for token in $line; do
+        local base="$token" has_paren=false
+        case "$token" in
+          *")")
+            base="${token%)}"
+            has_paren=true
+            ;;
+        esac
+        case "$base" in
+          udev)
+            result="$result systemd"
+            $has_paren && trailing_paren=")"
+            ;;
+          fsck)
+            $has_paren && trailing_paren=")"
+            continue
+            ;;
+          *)
+            result="$result $base"
+            $has_paren && trailing_paren=")"
+            ;;
+        esac
+      done
+      line="${result# }${trailing_paren}"
+      printf '%s\n' "$line" >> "$tmpfile"
     else
       printf '%s\n' "$line" >> "$tmpfile"
     fi

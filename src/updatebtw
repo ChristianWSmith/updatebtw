@@ -1,8 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # updatebtw — Arch Linux automatic update utility
 
 UPDATERBTW_ROOT="${UPDATERBTW_ROOT:-/usr/lib/updatebtw}"
 export UPDATERBTW_ROOT
+
+UPDATEBTW_TIMEOUT="${UPDATEBTW_TIMEOUT:-7200}"
 
 case "${1:-help}" in
   update)
@@ -33,7 +35,11 @@ case "${1:-help}" in
     . "$UPDATERBTW_ROOT/config.sh"
     . "$UPDATERBTW_ROOT/backup.sh"
     . "$UPDATERBTW_ROOT/updater.sh"
-    update_packages
+    if [ -n "$SYSTEMD_INHIBIT" ]; then
+      timeout "$UPDATEBTW_TIMEOUT" bash -c 'source "$UPDATERBTW_ROOT/config.sh"; source "$UPDATERBTW_ROOT/backup.sh"; source "$UPDATERBTW_ROOT/updater.sh"; update_packages'
+    else
+      update_packages
+    fi
     ;;
   install|reconfigure)
     . "$UPDATERBTW_ROOT/config.sh"
@@ -64,6 +70,7 @@ case "${1:-help}" in
     echo "  REFLECTOR_COUNTRY=${REFLECTOR_COUNTRY:-United States}"
     echo "  REFLECTOR_INTERVAL=${REFLECTOR_INTERVAL:-30}"
     echo "  SILENT_BOOT=${SILENT_BOOT:-false}"
+    echo "  BLACKLIST_MODULES=${BLACKLIST_MODULES:-sp5100_tco}"
     echo "  AUR_USER=${AUR_USER:-aur_builder}"
     echo "  FLATPAK_USER=${FLATPAK_USER:-${AUR_USER:-aur_builder}}"
     ;;
@@ -130,6 +137,9 @@ case "${1:-help}" in
 
     echo "Removing configuration..."
     rm -rf /etc/updatebtw
+
+    echo "Removing state files..."
+    rm -rf /var/lib/updatebtw/state
 
     echo "Removing sudoers rules..."
     rm -f /etc/sudoers.d/updatebtw-*

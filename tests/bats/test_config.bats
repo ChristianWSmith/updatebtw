@@ -5,7 +5,12 @@ setup_file() {
 }
 
 setup() {
+  mocks_setup
   . "$UPDATERBTW_ROOT/config.sh"
+}
+
+teardown() {
+  mocks_teardown
 }
 
 @test "read_config returns ok when file doesn't exist" {

@@ -60,8 +60,25 @@ Edit `/etc/updatebtw/updatebtw.conf` or re-run `sudo updatebtw install`.
 | `ENABLE_REFLECTOR` | `true` | Refresh mirrorlist via reflector |
 | `REFLECTOR_COUNTRY` | `United States` | Country for mirror selection |
 | `REFLECTOR_INTERVAL` | `30` | Days between mirrorlist refreshes |
+| `SILENT_BOOT` | `false` | Configure silent boot |
+| `BLACKLIST_MODULES` | `sp5100_tco` | Kernel modules to blacklist for silent boot |
 | `AUR_USER` | `aur_builder` | Unprivileged user for AUR updates |
 | `FLATPAK_USER` | (install user) | User for flatpak updates |
+
+## Security
+
+- Config file (`/etc/updatebtw/updatebtw.conf`) is validated before sourcing:
+  permissions must be `600` or `400`, owned by `root`, and only contain
+  recognized keys. Dangerous syntax (`$()`, backticks, `;`, `&`, `|`) is
+  rejected.
+- AUR helper installation uses scoped sudoers rules (`NOPASSWD: /usr/bin/pacman,
+  /usr/bin/makepkg`) instead of full unrestricted access.
+- Backup files are stored with `600` permissions in a `700` directory, owned by
+  `root`.
+- Update commands are properly escaped when falling back to `su -c`.
+- The installer includes a `--verify` flag for source integrity checking.
+- Updates are rate-limited (default 5 min minimum interval) and timeout after
+  2 hours to prevent indefinite shutdown blocking.
 
 ## Uninstall
 

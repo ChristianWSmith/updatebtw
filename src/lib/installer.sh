@@ -45,20 +45,25 @@ _install_aur_helper() {
       useradd -m "$user" 2>/dev/null || true
     fi
     mkdir -p /etc/sudoers.d
-    echo "$user ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$user" 2>/dev/null || true
+    cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
+$user ALL=(root) NOPASSWD: /usr/bin/pacman, /usr/bin/makepkg
+SUDOEOF
+    chmod 440 "/etc/sudoers.d/updatebtw-$user"
   fi
 
   rm -rf "/tmp/$helper" 2>/dev/null || true
   if [ "$(id -un)" = "$user" ]; then
     git clone --depth=1 "https://aur.archlinux.org/$helper.git" "/tmp/$helper"
     cd "/tmp/$helper"
-    makepkg -si --noconfirm
+    makepkg -s --noconfirm
+    sudo pacman -U --noconfirm *.pkg.tar.*
   else
     su - "$user" -c "
       git clone --depth=1 https://aur.archlinux.org/$helper.git /tmp/$helper
       cd /tmp/$helper
-      makepkg -si --noconfirm
+      makepkg -s --noconfirm
     "
+    sudo pacman -U --noconfirm /tmp/$helper/*.pkg.tar.*
   fi && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
 
   command -v "$helper" >/dev/null 2>&1
@@ -73,8 +78,12 @@ _setup_aur_user() {
   fi
 
   rm -f "/etc/sudoers.d/$user" 2>/dev/null || true
+  rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
-  echo "$user ALL=(ALL) NOPASSWD: /usr/bin/pacman" > "/etc/sudoers.d/updatebtw-$user"
+  cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
+$user ALL=(root) NOPASSWD: /usr/bin/pacman
+SUDOEOF
+  chmod 440 "/etc/sudoers.d/updatebtw-$user"
 }
 
 tui_main() {

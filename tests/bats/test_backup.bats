@@ -1,7 +1,12 @@
 load ../helpers/mocks.sh
 
 setup() {
+  mocks_setup
   . "$UPDATERBTW_ROOT/backup.sh"
+}
+
+teardown() {
+  mocks_teardown
 }
 
 @test "backup_file creates backup with timestamp" {

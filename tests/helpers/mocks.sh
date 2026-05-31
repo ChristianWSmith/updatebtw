@@ -6,20 +6,34 @@ export BACKUP_DIR="$(mktemp -d /tmp/updatebtw-backup.XXXXXX)"
 
 # Override config path for testing
 export UPDATERBTW_CONFIG="$(mktemp /tmp/updatebtw-config.XXXXXX)"
+chmod 600 "$UPDATERBTW_CONFIG"
+export _UPDATERBTW_CONFIG_ORIG="$UPDATERBTW_CONFIG"
 export UPDATERBTW_BACKUP_DIR="$BACKUP_DIR"
 export UPDATERBTW_BACKUP_KEEP="5"
 
 # Source the real modules
 export UPDATERBTW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../src/lib" && pwd)"
 
-setup() {
+mocks_setup() {
   :> "$MOCK_LOG"
   rm -rf "$BACKUP_DIR"/*
   mkdir -p "$BACKUP_DIR"
+  UPDATERBTW_CONFIG="$_UPDATERBTW_CONFIG_ORIG"
+  export UPDATERBTW_CONFIG
+  if [ ! -f "$UPDATERBTW_CONFIG" ]; then
+    UPDATERBTW_CONFIG="$(mktemp /tmp/updatebtw-config.XXXXXX)"
+    chmod 600 "$UPDATERBTW_CONFIG"
+    export UPDATERBTW_CONFIG
+    export _UPDATERBTW_CONFIG_ORIG="$UPDATERBTW_CONFIG"
+  fi
+  rm -f /var/lib/updatebtw/state/last_update 2>/dev/null || true
+  export UPDATERBTW_MIN_UPDATE_INTERVAL=0
 }
 
-teardown() {
-  rm -f "$UPDATERBTW_CONFIG"
+mocks_teardown() {
+  if [ "$UPDATERBTW_CONFIG" != "$_UPDATERBTW_CONFIG_ORIG" ]; then
+    rm -f "$UPDATERBTW_CONFIG"
+  fi
 }
 
 # Mock systemctl
@@ -98,3 +112,12 @@ su() {
     eval "$cmd"
   fi
 }
+
+# Mock timeout
+timeout() {
+  local duration="$1"
+  shift
+  "$@"
+}
+
+export -f pacman yay paru flatpak reflector notify-send mkinitcpio runuser su timeout

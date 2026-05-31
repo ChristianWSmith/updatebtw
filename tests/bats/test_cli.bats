@@ -6,7 +6,11 @@ setup_file() {
 }
 
 setup() {
-  : > "$MOCK_LOG"
+  mocks_setup
+}
+
+teardown() {
+  mocks_teardown
 }
 
 @test "cli help prints usage" {
@@ -39,6 +43,7 @@ setup() {
   export UPDATERBTW_CONFIG="/tmp/test_cli_status.conf"
   echo 'AUR_HELPER="paru"' > "$UPDATERBTW_CONFIG"
   echo 'UPDATE_FREQUENCY="daily"' >> "$UPDATERBTW_CONFIG"
+  chmod 600 "$UPDATERBTW_CONFIG"
 
   run "$CLI" status
   [ "$status" -eq 0 ]
@@ -68,6 +73,7 @@ AUR_HELPER="paru"
 UPDATE_FREQUENCY="weekly"
 ENABLE_REFLECTOR="false"
 EOF
+  chmod 600 "$UPDATERBTW_CONFIG"
 
   paru() { echo "paru $*" >> "$MOCK_LOG"; return 0; }
   flatpak() { echo "flatpak $*" >> "$MOCK_LOG"; return 0; }
@@ -102,6 +108,8 @@ EOF
 
 @test "cli update wraps in systemd-inhibit" {
   export UPDATERBTW_ROOT="/opt/updatebtw/src/lib"
+  # Unset exported mock functions so /tmp scripts take precedence
+  unset -f yay paru flatpak notify-send reflector 2>/dev/null || true
   # Mock systemd-inhibit that logs args and runs the command
   cat > /tmp/systemd-inhibit << 'SCRIPT'
 #!/bin/sh

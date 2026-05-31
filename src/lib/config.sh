@@ -4,8 +4,57 @@ UPDATERBTW_CONFIG="${UPDATERBTW_CONFIG:-/etc/updatebtw/updatebtw.conf}"
 AUR_USER="${AUR_USER:-aur_builder}"
 FLATPAK_USER="${FLATPAK_USER:-${AUR_USER:-aur_builder}}"
 
+_allowed_config_keys="AUR_HELPER UPDATE_FREQUENCY UPDATE_TIME RUN_AT_BOOT ENABLE_REFLECTOR REFLECTOR_COUNTRY REFLECTOR_PROTOCOL REFLECTOR_INTERVAL SILENT_BOOT AUR_USER FLATPAK_USER BLACKLIST_MODULES"
+
+_safe_read_config() {
+  local cfg="$1"
+  [ -f "$cfg" ] || return 0
+
+  local perms
+  perms="$(stat -c '%a' "$cfg" 2>/dev/null)" || return 1
+  if [ "$perms" != "600" ] && [ "$perms" != "400" ]; then
+    echo "updatebtw: config $cfg has unsafe permissions ($perms), expected 600 or 400" >&2
+    return 1
+  fi
+
+  local owner
+  owner="$(stat -c '%U' "$cfg" 2>/dev/null)" || return 1
+  if [ "$owner" != "root" ]; then
+    echo "updatebtw: config $cfg is not owned by root (owned by $owner)" >&2
+    return 1
+  fi
+
+  local line key
+  while IFS= read -r line; do
+    case "$line" in
+      ""|\#*) continue ;;
+    esac
+    key="${line%%=*}"
+    key="$(printf '%s' "$key" | tr -d '[:space:]')"
+    local allowed=false k
+    for k in $_allowed_config_keys; do
+      if [ "$key" = "$k" ]; then
+        allowed=true
+        break
+      fi
+    done
+    if ! $allowed; then
+      echo "updatebtw: config $cfg contains unknown key: $key" >&2
+      return 1
+    fi
+    case "$line" in
+      *'$('*|*'`'*|*';'*|*'&'*|*'|'*)
+        echo "updatebtw: config $cfg contains dangerous syntax in: $line" >&2
+        return 1
+        ;;
+    esac
+  done < "$cfg"
+
+  . "$cfg"
+}
+
 read_config() {
-  [ -f "$UPDATERBTW_CONFIG" ] && . "$UPDATERBTW_CONFIG" || true
+  _safe_read_config "$UPDATERBTW_CONFIG"
 }
 
 write_config() {
@@ -25,9 +74,12 @@ REFLECTOR_COUNTRY="${REFLECTOR_COUNTRY:-United States}"
 REFLECTOR_PROTOCOL="${REFLECTOR_PROTOCOL:-https}"
 REFLECTOR_INTERVAL="${REFLECTOR_INTERVAL:-30}"
 SILENT_BOOT="${SILENT_BOOT:-false}"
+BLACKLIST_MODULES="${BLACKLIST_MODULES:-sp5100_tco}"
 AUR_USER="${AUR_USER:-aur_builder}"
 FLATPAK_USER="${FLATPAK_USER:-${SUDO_USER:-$(id -un)}}"
 EOF
+  chmod 600 "$UPDATERBTW_CONFIG"
+  chown root:root "$UPDATERBTW_CONFIG" 2>/dev/null || true
 }
 
 validate_config() {

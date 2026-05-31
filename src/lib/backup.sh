@@ -7,11 +7,15 @@ backup_file() {
   local src="$1"
   [ -f "$src" ] || return 1
   mkdir -p "$UPDATERBTW_BACKUP_DIR"
+  chmod 700 "$UPDATERBTW_BACKUP_DIR"
   local name
   name="$(basename "$src")"
-  local ts
+  local ts rand
   ts="$(date "+%Y%m%d_%H%M%S")"
-  cp -a "$src" "$UPDATERBTW_BACKUP_DIR/${name}.${ts}"
+  rand="$(head -c 4 /dev/urandom | od -An -tx4 | tr -d ' ')"
+  cp -a "$src" "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
+  chmod 600 "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
+  chown root:root "$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}" 2>/dev/null || true
   _rotate_backups "$name"
 }
 
