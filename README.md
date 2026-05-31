@@ -6,7 +6,7 @@ Not affiliated with or endorsed by the Arch Linux project.
 ## Install
 
 ```sh
-curl -sS https://raw.githubusercontent.com/anomalyco/updatebtw/main/installer.sh | sudo bash
+curl -sS https://raw.githubusercontent.com/ChristianWSmith/updatebtw/main/installer.sh | sudo bash
 ```
 
 This launches a TUI wizard that walks you through configuring AUR helper, update
