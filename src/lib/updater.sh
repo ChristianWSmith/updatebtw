@@ -90,7 +90,7 @@ _notify() {
 
   if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     local uid
-    uid=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | head -1)
+    uid=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)
     if [ -n "$uid" ] && [ -S "/run/user/$uid/bus" ]; then
       export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
     fi
