@@ -78,9 +78,10 @@ _setup_aur_user() {
 }
 
 tui_main() {
-  [ ! -t 0 ] && exec 0< /dev/tty
   _check_root
   _check_deps
+
+  whiptail() { command whiptail "$@" </dev/tty; }
 
   whiptail --title "updatebtw" --msgbox \
     "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nNOTE: This project is NOT affiliated with or endorsed by Arch Linux.\nIt is an unofficial third-party tool.\n\nThis installer will configure automatic system updates on your system." \
