@@ -2,6 +2,17 @@
 # updatebtw — Arch Linux automatic update utility
 
 UPDATERBTW_ROOT="${UPDATERBTW_ROOT:-/usr/lib/updatebtw}"
+UPDATERBTW_ROOT="$(readlink -f "$UPDATERBTW_ROOT" 2>/dev/null)" || {
+  echo "updatebtw: invalid UPDATERBTW_ROOT" >&2
+  exit 1
+}
+case "$UPDATERBTW_ROOT" in
+  */lib/updatebtw|*/src/lib) ;;
+  *)
+    echo "updatebtw: UPDATERBTW_ROOT must point to a valid updatebtw lib directory" >&2
+    exit 1
+    ;;
+esac
 export UPDATERBTW_ROOT
 
 UPDATEBTW_TIMEOUT="${UPDATEBTW_TIMEOUT:-7200}"
@@ -16,7 +27,9 @@ case "${1:-help}" in
         --who="updatebtw" \
         --why="Running system update" \
         --mode=block \
-        env -u UPDATERBTW_INHIBIT "$0" _update 2>/dev/null; then
+        env -u UPDATERBTW_INHIBIT \
+          UPDATERBTW_INHIBIT="$$-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' ')" \
+          "$0" _update 2>/dev/null; then
       exit 0
     fi
     . "$UPDATERBTW_ROOT/config.sh"
@@ -25,10 +38,14 @@ case "${1:-help}" in
     update_packages
     ;;
   _update)
-    if [ -z "$SYSTEMD_INHIBIT" ] && [ -z "$UPDATERBTW_INHIBIT" ]; then
-      echo "updatebtw: _update is an internal command. Use: sudo updatebtw update" >&2
-      exit 1
-    fi
+    case "${UPDATERBTW_INHIBIT:-}" in
+      [0-9]*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+        ;;
+      *)
+        echo "updatebtw: _update is an internal command. Use: sudo updatebtw update" >&2
+        exit 1
+        ;;
+    esac
     if [ -n "$SYSTEMD_INHIBIT" ]; then
       UPDATERBTW_LOG_DIR="/var/log/updatebtw"
       UPDATERBTW_LOG_FILE="$UPDATERBTW_LOG_DIR/$(date +%Y%m%d_%H%M%S).log"

@@ -63,45 +63,49 @@ SUDOEOF
 
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"' EXIT
 
-  rm -rf "/tmp/$helper" 2>/dev/null || true
+  local helper_tmp
+  # Clean up any stale directories from previous failed runs
+  rm -rf /tmp/updatebtw-"$helper".* 2>/dev/null || true
+  helper_tmp="$(mktemp -d "/tmp/updatebtw-$helper.XXXXXX")"
+  chown "$user:$user" "$helper_tmp"
+  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"; rm -rf "$helper_tmp"' EXIT
 
   local build_script
   build_script="$(mktemp /tmp/updatebtw-build.XXXXXX.sh)"
-  cat > "$build_script" << 'BUILDEOF'
+  cat > "$build_script" << BUILDEOF
 #!/bin/sh
 set -e
-HELPER="$1"
-HELPER_TMP="/tmp/$HELPER"
-rm -rf "$HELPER_TMP"
-git clone --depth=1 "https://aur.archlinux.org/$HELPER.git" "$HELPER_TMP"
-cd "$HELPER_TMP"
+HELPER="\$1"
+HELPER_TMP="\$2"
+git clone --depth=1 "https://aur.archlinux.org/\$HELPER.git" "\$HELPER_TMP"
+cd "\$HELPER_TMP"
 
 # Install build dependencies as root before running makepkg
 # makepkg -makedepends requires sudo, which the aur user may not have
-_deps="$(makepkg --printsrcinfo 2>/dev/null | sed -n 's/^\tmakedepends = //p' | tr '\n' ' ')"
-if [ -n "$_deps" ]; then
-  sudo pacman -S --needed --noconfirm $_deps 2>/dev/null || true
+_deps="\$(makepkg --printsrcinfo 2>/dev/null | sed -n 's/^\tmakedepends = //p' | tr '\n' ' ')"
+if [ -n "\$_deps" ]; then
+  sudo pacman -S --needed --noconfirm \$_deps 2>/dev/null || true
 fi
 
 makepkg --noconfirm
 BUILDEOF
   chmod 755 "$build_script"
-  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"' EXIT
+  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"; rm -rf "$helper_tmp"' EXIT
 
   if [ "$(id -un)" = "$user" ]; then
-    sh "$build_script" "$helper"
+    sh "$build_script" "$helper" "$helper_tmp"
   else
-    su - "$user" -c "sh '$build_script' '$helper'"
+    su - "$user" -c "sh '$build_script' '$helper' '$helper_tmp'"
   fi
 
-  if [ -f "/tmp/$helper/PKGBUILD" ]; then
+  if [ -f "$helper_tmp/PKGBUILD" ]; then
     local pkgbuild_hash
-    pkgbuild_hash="$(sha256sum "/tmp/$helper/PKGBUILD" | awk '{print $1}')"
+    pkgbuild_hash="$(sha256sum "$helper_tmp/PKGBUILD" | awk '{print $1}')"
     echo "PKGBUILD SHA256: $pkgbuild_hash"
     echo "Verify at: https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
   fi
 
-  sudo pacman -U --noconfirm /tmp/"$helper"/*.pkg.tar.* && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
+  sudo pacman -U --noconfirm "$helper_tmp"/*.pkg.tar.* && printf "Installed %s\n" "$helper" || printf "Warning: failed to install %s\n" "$helper"
 
   rm -f "$build_script"
   command -v "$helper" >/dev/null 2>&1

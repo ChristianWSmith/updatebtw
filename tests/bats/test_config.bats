@@ -56,6 +56,7 @@ teardown() {
 @test "validate_config accepts valid values" {
   AUR_HELPER="paru"
   UPDATE_FREQUENCY="weekly"
+  AUR_USER=""
   run validate_config
   [ "$status" -eq 0 ]
 }

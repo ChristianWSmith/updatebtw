@@ -147,6 +147,20 @@ validate_config() {
     daily|weekly|monthly) ;;
     *) errors="${errors}error: UPDATE_FREQUENCY must be 'daily', 'weekly', or 'monthly' (got: ${UPDATE_FREQUENCY})\n" ;;
   esac
+  if [ -n "${AUR_USER:-}" ]; then
+    local aur_uid
+    aur_uid="$(id -u "$AUR_USER" 2>/dev/null)" || true
+    if [ -n "$aur_uid" ] && [ "$aur_uid" -ge 1000 ] 2>/dev/null; then
+      local aur_shell
+      aur_shell="$(getent passwd "$AUR_USER" 2>/dev/null | cut -d: -f7)"
+      case "$aur_shell" in
+        */nologin|*/false) ;;
+        *)
+          errors="${errors}error: AUR_USER '$AUR_USER' appears to be a login user (UID $aur_uid). Use a dedicated system account.\n"
+          ;;
+      esac
+    fi
+  fi
   if [ -n "$errors" ]; then
     printf '%b' "$errors" >&2
     return 1

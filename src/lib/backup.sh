@@ -20,10 +20,13 @@ backup_file() {
   chown root:root "$backup_path" 2>/dev/null || true
 
   mkdir -p "$(dirname "$UPDATERBTW_BACKUP_MANIFEST")"
-  local hash
+  local hash perms owner group
   hash="$(sha256sum "$backup_path" | awk '{print $1}')"
+  perms="$(stat -c '%a' "$src")"
+  owner="$(stat -c '%u' "$src")"
+  group="$(stat -c '%g' "$src")"
   grep -qxF "$src" "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || echo "$src" >> "$UPDATERBTW_BACKUP_MANIFEST"
-  echo "$src $hash" >> "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
+  echo "$src $hash $perms $owner $group" >> "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
   chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
   chmod 600 "${UPDATERBTW_BACKUP_MANIFEST}.hashes" 2>/dev/null || true
 
@@ -60,6 +63,23 @@ restore_file() {
   fi
 
   cp -a "$latest" "$src"
+
+  if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
+    local manifest_line
+    manifest_line="$(grep "^$src " "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
+    if [ -n "$manifest_line" ]; then
+      local r_perms r_owner r_group
+      r_perms="$(printf '%s' "$manifest_line" | awk '{print $3}')"
+      r_owner="$(printf '%s' "$manifest_line" | awk '{print $4}')"
+      r_group="$(printf '%s' "$manifest_line" | awk '{print $5}')"
+      if [ -n "$r_perms" ] && printf '%s' "$r_perms" | grep -qE '^[0-7]{3,4}$'; then
+        chmod "$r_perms" "$src"
+      fi
+      if [ -n "$r_owner" ] && [ -n "$r_group" ]; then
+        chown "$r_owner:$r_group" "$src" 2>/dev/null || true
+      fi
+    fi
+  fi
 }
 
 list_backups() {

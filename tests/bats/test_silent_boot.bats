@@ -110,55 +110,25 @@ teardown() {
 
 @test "patch_fsck_services adds StandardOutput and StandardError" {
   local testdir="$(mktemp -d /tmp/updatebtw-fsck.XXXXXX)"
-  local service="$testdir/systemd-fsck-root.service"
 
-  cat > "$service" << 'EOF'
-[Unit]
-Description=File System Check on Root Device
-Documentation=man:systemd-fsck-root.service(8)
-DefaultDependencies=no
-BindsTo=dev-%i.device
-After=dev-%i.device
-Before=local-fs.target
-Wants=local-fs.target
+  patch_fsck_services
 
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/lib/systemd/systemd-fsck
-TimeoutSec=0
-EOF
-
-  patch_fsck_services "$service"
-
-  grep "StandardOutput=null" "$service" >/dev/null
-  grep "StandardError=journal+console" "$service" >/dev/null
+  local override_file="/etc/systemd/system/systemd-fsck@.service.d/silent.conf"
+  [ -f "$override_file" ]
+  grep "StandardOutput=null" "$override_file" >/dev/null
+  grep "StandardError=journal+console" "$override_file" >/dev/null
   rm -rf "$testdir"
 }
 
 @test "patch_fsck_services does not duplicate lines on re-run" {
-  local testdir="$(mktemp -d /tmp/updatebtw-fsck-dedup.XXXXXX)"
-  local service="$testdir/systemd-fsck-root.service"
+  patch_fsck_services
+  patch_fsck_services
+  patch_fsck_services
 
-  cat > "$service" << 'EOF'
-[Unit]
-Description=Test
-
-[Service]
-Type=oneshot
-ExecStart=/bin/true
-EOF
-
-  # Run twice
-  patch_fsck_services "$service"
-  patch_fsck_services "$service"
-  patch_fsck_services "$service"
-
+  local override_file="/etc/systemd/system/systemd-fsck@.service.d/silent.conf"
   local count
-  count="$(grep -c "StandardOutput=null" "$service" || true)"
+  count="$(grep -c "StandardOutput=null" "$override_file" || true)"
   [ "$count" -eq 1 ]
-
-  rm -rf "$testdir"
 }
 
 @test "detect_bootloader returns systemd-boot when loader.conf exists" {
@@ -260,13 +230,13 @@ SCRIPT
   rm -f "$testfile"
 }
 
-@test "set_grub_silent sets GRUB_RECORDFAIL_TIMEOUT=\$GRUB_TIMEOUT" {
+@test "set_grub_silent sets GRUB_RECORDFAIL_TIMEOUT=10" {
   local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
   cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
 
   set_grub_silent "$testfile"
 
-  grep "^GRUB_RECORDFAIL_TIMEOUT=\$GRUB_TIMEOUT$" "$testfile" >/dev/null
+  grep "^GRUB_RECORDFAIL_TIMEOUT=10$" "$testfile" >/dev/null
   rm -f "$testfile"
 }
 
@@ -304,7 +274,7 @@ EOF
 
   grep "^GRUB_DEFAULT=0$" "$testfile" >/dev/null
   grep "^GRUB_TIMEOUT=0$" "$testfile" >/dev/null
-  grep "^GRUB_RECORDFAIL_TIMEOUT=\$GRUB_TIMEOUT$" "$testfile" >/dev/null
+  grep "^GRUB_RECORDFAIL_TIMEOUT=10$" "$testfile" >/dev/null
   rm -f "$testfile"
 }
 

@@ -98,7 +98,7 @@ set_grub_silent() {
         has_timeout=true
         ;;
       GRUB_RECORDFAIL_TIMEOUT)
-        printf 'GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT\n' >> "$tmpfile"
+        printf 'GRUB_RECORDFAIL_TIMEOUT=10\n' >> "$tmpfile"
         has_recordfail=true
         ;;
       *)
@@ -114,7 +114,7 @@ set_grub_silent() {
     printf 'GRUB_TIMEOUT=0\n' >> "$tmpfile"
   fi
   if ! $has_recordfail; then
-    printf 'GRUB_RECORDFAIL_TIMEOUT=$GRUB_TIMEOUT\n' >> "$tmpfile"
+    printf 'GRUB_RECORDFAIL_TIMEOUT=10\n' >> "$tmpfile"
   fi
 
   # Preserve original ownership/permissions, then atomic replace
@@ -197,45 +197,28 @@ patch_mkinitcpio() {
 }
 
 patch_fsck_services() {
-  local files=("$@")
-  if [ ${#files[@]} -eq 0 ]; then
-    files=(/usr/lib/systemd/system/systemd-fsck@.service /usr/lib/systemd/system/systemd-fsck-root.service)
+  local units=("$@")
+  if [ ${#units[@]} -eq 0 ]; then
+    units=(systemd-fsck@.service systemd-fsck-root.service)
   fi
 
-  local file
-  for file in "${files[@]}"; do
-    [ -f "$file" ] || continue
-    backup_file "$file" 2>/dev/null || true
+  local unit
+  for unit in "${units[@]}"; do
+    local name="${unit%.service}"
+    name="${name##*/}"
+    local override_dir="/etc/systemd/system/${name}.service.d"
+    mkdir -p "$override_dir"
+    local override_file="$override_dir/silent.conf"
 
-    local tmpfile
-    tmpfile="$(mktemp /tmp/updatebtw-fsck.XXXXXX)"
-    chmod 644 "$tmpfile"
-    chown root:root "$tmpfile"
-    local in_service=false
-    local line key
+    if [ -f "$override_file" ] && grep -q 'StandardOutput=null' "$override_file" 2>/dev/null; then
+      continue
+    fi
 
-    while IFS= read -r line; do
-      key="${line%%=*}"
-      if [ "$line" = "[Service]" ]; then
-        in_service=true
-        printf '%s\n' "$line" >> "$tmpfile"
-        printf 'StandardOutput=null\n' >> "$tmpfile"
-        printf 'StandardError=journal+console\n' >> "$tmpfile"
-      elif $in_service && { [ "$key" = "StandardOutput" ] || [ "$key" = "StandardError" ]; }; then
-        :
-      else
-        printf '%s\n' "$line" >> "$tmpfile"
-      fi
-    done < "$file"
-
-    # Preserve original ownership/permissions, then atomic replace
-    local orig_perms orig_owner orig_group
-    orig_perms="$(stat -c '%a' "$file" 2>/dev/null || echo "644")"
-    orig_owner="$(stat -c '%u' "$file" 2>/dev/null || echo "0")"
-    orig_group="$(stat -c '%g' "$file" 2>/dev/null || echo "0")"
-    chmod "$orig_perms" "$tmpfile"
-    chown "$orig_owner:$orig_group" "$tmpfile"
-    mv -f "$tmpfile" "$file"
+    cat > "$override_file" << 'EOF'
+[Service]
+StandardOutput=null
+StandardError=journal+console
+EOF
   done
 }
 
