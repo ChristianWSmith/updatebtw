@@ -12,12 +12,12 @@ case "${1:-help}" in
       echo "updatebtw: update requires root. Use: sudo updatebtw update" >&2
       exit 1
     fi
-    if [ -z "$UPDATERBTW_INHIBIT" ] && command -v systemd-inhibit >/dev/null 2>&1; then
-      systemd-inhibit --what=shutdown:sleep \
+    if [ -z "$UPDATERBTW_INHIBIT" ] && systemd-inhibit --what=shutdown:sleep \
         --who="updatebtw" \
         --why="Running system update" \
         --mode=block \
-        env -u UPDATERBTW_INHIBIT "$0" _update && exit 0
+        env -u UPDATERBTW_INHIBIT "$0" _update 2>/dev/null; then
+      exit 0
     fi
     . "$UPDATERBTW_ROOT/config.sh"
     . "$UPDATERBTW_ROOT/backup.sh"
