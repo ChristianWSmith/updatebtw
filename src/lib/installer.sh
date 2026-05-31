@@ -126,99 +126,132 @@ SUDOEOF
 
 tui_main() {
   _check_root
-  _check_deps
 
-  whiptail --title "updatebtw" --msgbox \
-    "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nNOTE: This project is NOT affiliated with or endorsed by Arch Linux.\nIt is an unofficial third-party tool.\n\nThis installer will configure automatic system updates on your system." \
-    12 60
+  local _non_interactive=false
+  for arg in "$@"; do
+    case "$arg" in
+      --non-interactive) _non_interactive=true ;;
+    esac
+  done
 
-  local freq_choice
+  if $_non_interactive; then
+    echo "==> updatebtw: installing with defaults"
+    echo "    AUR_HELPER=$AUR_HELPER"
+    echo "    AUR_USER=$AUR_USER"
+    echo "    FLATPAK_USER=$FLATPAK_USER"
+    echo "    UPDATE_FREQUENCY=$UPDATE_FREQUENCY"
+    echo "    UPDATE_TIME=$UPDATE_TIME"
+    echo "    RUN_AT_BOOT=$RUN_AT_BOOT"
+    echo "    ENABLE_REFLECTOR=$ENABLE_REFLECTOR"
+    echo "    REFLECTOR_COUNTRY=$REFLECTOR_COUNTRY"
+    echo "    REFLECTOR_INTERVAL=$REFLECTOR_INTERVAL"
+    echo "    SILENT_BOOT=$SILENT_BOOT"
+    echo ""
 
-  AUR_HELPER=$(whiptail --title "AUR Helper" --radiolist \
-    "Select your preferred AUR helper:" 12 65 2 \
-    "yay"  "Original Go-based AUR helper (recommended)" ON \
-    "paru" "Modern Rust-based AUR helper"             OFF \
-     3>&1 1>&2 2>&3) || exit 1
-
-  local detected_user="aur_builder"
-  AUR_USER=$(whiptail --title "AUR User" --inputbox \
-    "Run AUR helpers (yay/paru) as which user?\n\nThis user will be created if it doesn't already exist.\nWe do NOT recommend using your personal user account." 10 60 "$detected_user" \
-    3>&1 1>&2 2>&3) || exit 1
-
-  local detected_flatpak_user="${SUDO_USER:-$(id -un)}"
-  FLATPAK_USER=$(whiptail --title "Flatpak User" --inputbox \
-    "Run flatpak updates as which user?\n\nThis should be your personal user account,\nsince flatpak installs per-user packages." 10 60 "$detected_flatpak_user" \
-    3>&1 1>&2 2>&3) || exit 1
-
-  freq_choice=$(whiptail --title "Update Frequency" --radiolist \
-    "How often should updates run?" 14 50 3 \
-    "daily"   "Update every day" ON \
-    "weekly"  "Update once a week" OFF \
-    "monthly" "Update once a month" OFF \
-    3>&1 1>&2 2>&3) || exit 1
-  UPDATE_FREQUENCY="$freq_choice"
-
-  UPDATE_TIME=$(whiptail --title "Update Time" --inputbox \
-    "What time should updates run? (HH:MM, 24-hour format)" 8 60 "06:00" \
-    3>&1 1>&2 2>&3) || exit 1
-
-  if whiptail --title "Boot Update" --yesno \
-    "Run an update every time the system boots?\n\nThis is useful for systems that are not always on." 10 60; then
-    RUN_AT_BOOT="true"
-  else
-    RUN_AT_BOOT="false"
+    # Install deps non-interactively
+    local missing=""
+    ! command -v whiptail >/dev/null 2>&1 && missing="$missing libnewt"
+    ! command -v git >/dev/null 2>&1 && missing="$missing git"
+    ! command -v sudo >/dev/null 2>&1 && missing="$missing sudo"
+    ! pacman -Qi base-devel >/dev/null 2>&1 && missing="$missing base-devel"
+    if [ -n "$missing" ]; then
+      echo "Installing missing dependencies:$missing"
+      pacman -S --needed --noconfirm $missing >/dev/null 2>&1 || true
+    fi
   fi
 
-  if whiptail --title "Mirrorlist" --yesno \
-    "Automatically update mirrorlist via reflector?\n\nThis keeps your package sources fast and up to date." 10 60; then
-    ENABLE_REFLECTOR="true"
-    REFLECTOR_COUNTRY=$(whiptail --title "Mirror Country" --inputbox \
-      "Mirror country (e.g. 'United States', 'Germany'):" 8 60 "United States" \
+    whiptail --title "updatebtw" --msgbox \
+      "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nNOTE: This project is NOT affiliated with or endorsed by Arch Linux.\nIt is an unofficial third-party tool.\n\nThis installer will configure automatic system updates on your system." \
+      12 60
+
+    local freq_choice
+
+    AUR_HELPER=$(whiptail --title "AUR Helper" --radiolist \
+      "Select your preferred AUR helper:" 12 65 2 \
+      "yay"  "Original Go-based AUR helper (recommended)" ON \
+      "paru" "Modern Rust-based AUR helper"             OFF \
+       3>&1 1>&2 2>&3) || exit 1
+
+    local detected_user="aur_builder"
+    AUR_USER=$(whiptail --title "AUR User" --inputbox \
+      "Run AUR helpers (yay/paru) as which user?\n\nThis user will be created if it doesn't already exist.\nWe do NOT recommend using your personal user account." 10 60 "$detected_user" \
       3>&1 1>&2 2>&3) || exit 1
-    REFLECTOR_INTERVAL=$(whiptail --title "Mirror Update Interval" --inputbox \
-      "How often (in days) should the mirrorlist be refreshed?" 8 60 "30" \
+
+    local detected_flatpak_user="${SUDO_USER:-$(id -un)}"
+    FLATPAK_USER=$(whiptail --title "Flatpak User" --inputbox \
+      "Run flatpak updates as which user?\n\nThis should be your personal user account,\nsince flatpak installs per-user packages." 10 60 "$detected_flatpak_user" \
       3>&1 1>&2 2>&3) || exit 1
-  else
-    ENABLE_REFLECTOR="false"
-  fi
 
-  local bootloader
-  bootloader="$(detect_bootloader)"
-  local silent_boot_msg
-  case "$bootloader" in
-    systemd-boot)
-      silent_boot_msg="Configure silent boot?\n\nDetected: systemd-boot\n\nReduces boot messages by modifying boot loader entries,\nmkinitcpio, systemd-fsck services, and kernel printk settings."
-      ;;
-    grub)
-      silent_boot_msg="Configure silent boot?\n\nDetected: GRUB\n\nReduces boot messages by configuring GRUB timeout settings,\nregenerating grub.cfg, and adjusting mkinitcpio, systemd-fsck\nservices, and kernel printk settings."
-      ;;
-    unknown)
-      silent_boot_msg="Configure silent boot?\n\nNo supported bootloader detected (systemd-boot or GRUB).\n\nBootloader-specific changes will be skipped, but generic\nchanges will still apply: mkinitcpio, systemd-fsck services,\nand kernel printk settings."
-      ;;
-  esac
+    freq_choice=$(whiptail --title "Update Frequency" --radiolist \
+      "How often should updates run?" 14 50 3 \
+      "daily"   "Update every day" ON \
+      "weekly"  "Update once a week" OFF \
+      "monthly" "Update once a month" OFF \
+      3>&1 1>&2 2>&3) || exit 1
+    UPDATE_FREQUENCY="$freq_choice"
 
-  if whiptail --title "Silent Boot" --yesno "$silent_boot_msg" 14 65; then
-    SILENT_BOOT="true"
-  else
-    SILENT_BOOT="false"
-  fi
+    UPDATE_TIME=$(whiptail --title "Update Time" --inputbox \
+      "What time should updates run? (HH:MM, 24-hour format)" 8 60 "06:00" \
+      3>&1 1>&2 2>&3) || exit 1
 
-  local summary
-  summary="AUR Helper: $AUR_HELPER (installed from AUR — verify PKGBUILD manually)\n"
-  summary="${summary}Frequency: $UPDATE_FREQUENCY at $UPDATE_TIME\n"
-  summary="${summary}Run at boot: $RUN_AT_BOOT\n"
-  summary="${summary}Reflector: $ENABLE_REFLECTOR"
-  if [ "$ENABLE_REFLECTOR" = "true" ]; then
-    summary="${summary} (country: $REFLECTOR_COUNTRY, interval: ${REFLECTOR_INTERVAL:-30}d)\n"
-  else
-    summary="${summary}\n"
-  fi
-  summary="${summary}AUR user: $AUR_USER\n"
-  summary="${summary}Flatpak user: $FLATPAK_USER\n"
-  summary="${summary}Silent boot: $SILENT_BOOT\n"
+    if whiptail --title "Boot Update" --yesno \
+      "Run an update every time the system boots?\n\nThis is useful for systems that are not always on." 10 60; then
+      RUN_AT_BOOT="true"
+    else
+      RUN_AT_BOOT="false"
+    fi
 
-  if ! whiptail --title "Confirm" --yesno "Apply the following configuration?\n\n${summary}" 16 65; then
-    exit 0
+    if whiptail --title "Mirrorlist" --yesno \
+      "Automatically update mirrorlist via reflector?\n\nThis keeps your package sources fast and up to date." 10 60; then
+      ENABLE_REFLECTOR="true"
+      REFLECTOR_COUNTRY=$(whiptail --title "Mirror Country" --inputbox \
+        "Mirror country (e.g. 'United States', 'Germany'):" 8 60 "United States" \
+        3>&1 1>&2 2>&3) || exit 1
+      REFLECTOR_INTERVAL=$(whiptail --title "Mirror Update Interval" --inputbox \
+        "How often (in days) should the mirrorlist be refreshed?" 8 60 "30" \
+        3>&1 1>&2 2>&3) || exit 1
+    else
+      ENABLE_REFLECTOR="false"
+    fi
+
+    local bootloader
+    bootloader="$(detect_bootloader)"
+    local silent_boot_msg
+    case "$bootloader" in
+      systemd-boot)
+        silent_boot_msg="Configure silent boot?\n\nDetected: systemd-boot\n\nReduces boot messages by modifying boot loader entries,\nmkinitcpio, systemd-fsck services, and kernel printk settings."
+        ;;
+      grub)
+        silent_boot_msg="Configure silent boot?\n\nDetected: GRUB\n\nReduces boot messages by configuring GRUB timeout settings,\nregenerating grub.cfg, and adjusting mkinitcpio, systemd-fsck\nservices, and kernel printk settings."
+        ;;
+      unknown)
+        silent_boot_msg="Configure silent boot?\n\nNo supported bootloader detected (systemd-boot or GRUB).\n\nBootloader-specific changes will be skipped, but generic\nchanges will still apply: mkinitcpio, systemd-fsck services,\nand kernel printk settings."
+        ;;
+    esac
+
+    if whiptail --title "Silent Boot" --yesno "$silent_boot_msg" 14 65; then
+      SILENT_BOOT="true"
+    else
+      SILENT_BOOT="false"
+    fi
+
+    local summary
+    summary="AUR Helper: $AUR_HELPER (installed from AUR — verify PKGBUILD manually)\n"
+    summary="${summary}Frequency: $UPDATE_FREQUENCY at $UPDATE_TIME\n"
+    summary="${summary}Run at boot: $RUN_AT_BOOT\n"
+    summary="${summary}Reflector: $ENABLE_REFLECTOR"
+    if [ "$ENABLE_REFLECTOR" = "true" ]; then
+      summary="${summary} (country: $REFLECTOR_COUNTRY, interval: ${REFLECTOR_INTERVAL:-30}d)\n"
+    else
+      summary="${summary}\n"
+    fi
+    summary="${summary}AUR user: $AUR_USER\n"
+    summary="${summary}Flatpak user: $FLATPAK_USER\n"
+    summary="${summary}Silent boot: $SILENT_BOOT\n"
+
+    if ! whiptail --title "Confirm" --yesno "Apply the following configuration?\n\n${summary}" 16 65; then
+      exit 0
+    fi
   fi
 
   echo "Installing AUR helper..."
@@ -243,9 +276,11 @@ tui_main() {
     silent_boot
   fi
 
-  whiptail --title "Complete" --msgbox \
-    "updatebtw has been installed and configured.\n\nUpdates will run automatically on your schedule." \
-    8 50
+  if ! $_non_interactive; then
+    whiptail --title "Complete" --msgbox \
+      "updatebtw has been installed and configured.\n\nUpdates will run automatically on your schedule." \
+      8 50
+  fi
 }
 
 # Overridden by standalone installer build with embedded file payloads.

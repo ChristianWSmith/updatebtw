@@ -38,6 +38,9 @@ uninstall:
 test:
 	cd tests && ./run-tests.sh
 
+integration:
+	cd tests && ./integration/run-integration-tests.sh
+
 clean:
 	rm -f installer.sh
 
