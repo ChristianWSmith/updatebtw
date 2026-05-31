@@ -4,14 +4,14 @@
 
 set -e
 
-INSTALLER_URL="https://raw.githubusercontent.com/anomalyco/updatebtw/main/installer.sh"
+INSTALLER_URL="https://raw.githubusercontent.com/ChristianWSmith/updatebtw/main/installer.sh"
 
-# When piped into bash (stdin is not a terminal), download to a temp file and
-# re-exec from there. This frees stdin for the TUI (whiptail opens /dev/tty).
 if [ ! -t 0 ]; then
-  tmp=""
-  curl -sSfL -o "/tmp/updatebtw-installer-$$.sh" "$INSTALLER_URL" 2>/dev/null && tmp="/tmp/updatebtw-installer-$$.sh"
-  [ -n "$tmp" ] && exec bash "$tmp" "$@"
+  echo "==> updatebtw: piped install is not supported (whiptail TUI needs a terminal)." >&2
+  echo "    Download the installer first:" >&2
+  echo "      curl -sSfL -o installer.sh $INSTALLER_URL" >&2
+  echo "      sudo bash installer.sh" >&2
+  exit 1
 fi
 
 UPDATERBTW_ROOT="/usr/lib/updatebtw"
