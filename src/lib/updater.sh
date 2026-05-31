@@ -105,9 +105,12 @@ _notify() {
   if [ "$(id -un)" = "$username" ]; then
     notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
   elif command -v runuser >/dev/null 2>&1; then
-    runuser -u "$username" -- notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
+    runuser -u "$username" -- env \
+      XDG_RUNTIME_DIR="/run/user/$uid" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+      notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
   else
-    su - "$username" -c "notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
+    su - "$username" -c "XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus notify-send -i '$icon' -u '$urgency' -a 'updatebtw' '$summary' '$body'" 2>/dev/null || true
   fi
 }
 
