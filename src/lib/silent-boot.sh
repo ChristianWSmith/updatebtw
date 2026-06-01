@@ -1,4 +1,14 @@
 # updatebtw silent boot module
+#
+# SECURITY (inherent — issue #12: broad filesystem modifications):
+# This module modifies boot loader entries, GRUB config, mkinitcpio hooks,
+# sysctl settings, systemd service overrides, and kernel module blacklists.
+# Any of these modifications could inadvertently break the boot process or
+# reduce system security (e.g., removing fsck from mkinitcpio hooks means
+# no filesystem check on boot). The changes are irreversible without restore
+# from backup. This is inherent to the scope of the silent boot feature.
+# Mitigations: backup before every modification, restore on mkinitcpio
+# failure, bootloader detection to avoid unsupported configurations.
 
 BLACKLIST_MODULES="${BLACKLIST_MODULES:-sp5100_tco}"
 
@@ -106,7 +116,7 @@ set_grub_silent() {
         has_default=true
         ;;
       GRUB_TIMEOUT)
-        printf 'GRUB_TIMEOUT=0\n' >> "$tmpfile"
+        printf 'GRUB_TIMEOUT=1\n' >> "$tmpfile"
         has_timeout=true
         ;;
       GRUB_RECORDFAIL_TIMEOUT)
@@ -123,11 +133,14 @@ set_grub_silent() {
     printf 'GRUB_DEFAULT=0\n' >> "$tmpfile"
   fi
   if ! $has_timeout; then
-    printf 'GRUB_TIMEOUT=0\n' >> "$tmpfile"
+    printf 'GRUB_TIMEOUT=1\n' >> "$tmpfile"
   fi
   if ! $has_recordfail; then
     printf 'GRUB_RECORDFAIL_TIMEOUT=10\n' >> "$tmpfile"
   fi
+
+  # Hidden style: boots immediately but any key press reveals the menu
+  printf 'GRUB_TIMEOUT_STYLE=hidden\n' >> "$tmpfile"
 
   local orig_perms orig_owner orig_group
   orig_perms="$(stat -c '%a' "$grub_cfg" 2>/dev/null || echo "644")"
@@ -188,8 +201,12 @@ patch_mkinitcpio() {
             $has_paren && trailing_paren=")"
             ;;
           fsck)
+            # Don't remove fsck — it's a safety-critical hook that performs
+            # filesystem checks on boot. Removing it risks data loss on
+            # corrupted filesystems. Silent boot is achieved via the
+            # systemd-fsck service override (StandardOutput=null) below.
+            result="$result fsck"
             $has_paren && trailing_paren=")"
-            continue
             ;;
           *)
             result="$result $base"
@@ -278,9 +295,4 @@ silent_boot() {
 
   touch ~root/.hushlogin
   touch ~"${SUDO_USER:-$(id -un)}"/.hushlogin 2>/dev/null || true
-
-  systemctl unmask systemd-journald-audit.socket 2>/dev/null || true
-  systemctl stop systemd-journald-audit.socket 2>/dev/null || true
-  systemctl disable systemd-journald-audit.socket 2>/dev/null || true
-  systemctl mask systemd-journald-audit.socket 2>/dev/null || true
 }

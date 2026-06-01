@@ -26,7 +26,7 @@ teardown() {
 
   run update_packages
   [ "$status" -eq 0 ]
-  grep "yay -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
+  grep "yay -Syu --noconfirm" "$MOCK_LOG" >/dev/null
 }
 
 @test "update_packages runs paru with correct args" {
@@ -37,7 +37,7 @@ teardown() {
 
   run update_packages
   [ "$status" -eq 0 ]
-  grep "paru -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
+  grep "paru -Syu --noconfirm" "$MOCK_LOG" >/dev/null
 }
 
 @test "update_packages runs flatpak" {
@@ -117,7 +117,7 @@ teardown() {
 
   run update_packages
   [ "$status" -eq 0 ]
-  grep "yay -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
+  grep "yay -Syu --noconfirm" "$MOCK_LOG" >/dev/null
   grep "runuser -u aur_builder" "$MOCK_LOG" >/dev/null
 }
 

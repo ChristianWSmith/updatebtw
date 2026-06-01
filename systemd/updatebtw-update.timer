@@ -3,7 +3,6 @@ Description=Scheduled updatebtw update
 Documentation=https://github.com/anomalyco/updatebtw
 
 [Timer]
-OnCalendar=*-*-* 06:00:00
 Persistent=true
 
 [Install]

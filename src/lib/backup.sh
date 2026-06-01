@@ -13,8 +13,8 @@ backup_file() {
   local name
   name="$(basename "$src")"
   local ts rand
-  ts="$(date "+%Y%m%d_%H%M%S")"
-  rand="$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  ts="$(date "+%Y%m%d_%H%M%S_%N")"
+  rand="$(head -c 2 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   local backup_path="$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
   cp -a "$src" "$backup_path"
   chmod 600 "$backup_path"
@@ -36,7 +36,7 @@ backup_file() {
     cp "${UPDATERBTW_BACKUP_MANIFEST}.hashes" "$tmp_hashes"
   fi
   grep -qxF "$src" "$tmp_manifest" 2>/dev/null || echo "$src" >> "$tmp_manifest"
-  echo "$src $hash $perms $owner $group" >> "$tmp_hashes"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$src" "$hash" "$perms" "$owner" "$group" >> "$tmp_hashes"
   mv -f "$tmp_manifest" "$UPDATERBTW_BACKUP_MANIFEST"
   mv -f "$tmp_hashes" "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
   chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
@@ -63,7 +63,7 @@ restore_file() {
 
   if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
     local expected_hash
-    expected_hash="$(awk -v src="$src" '$1 == src {print $2}' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
+    expected_hash="$(awk -F'\t' -v src="$src" '$1 == src {print $2}' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
     if [ -n "$expected_hash" ]; then
       local actual_hash
       actual_hash="$(sha256sum "$latest" | awk '{print $1}')"
@@ -78,12 +78,12 @@ restore_file() {
 
   if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
     local manifest_line
-    manifest_line="$(awk -v src="$src" '$1 == src' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
+    manifest_line="$(awk -F'\t' -v src="$src" '$1 == src' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
     if [ -n "$manifest_line" ]; then
       local r_perms r_owner r_group
-      r_perms="$(printf '%s' "$manifest_line" | awk '{print $3}')"
-      r_owner="$(printf '%s' "$manifest_line" | awk '{print $4}')"
-      r_group="$(printf '%s' "$manifest_line" | awk '{print $5}')"
+      r_perms="$(printf '%s' "$manifest_line" | awk -F'\t' '{print $3}')"
+      r_owner="$(printf '%s' "$manifest_line" | awk -F'\t' '{print $4}')"
+      r_group="$(printf '%s' "$manifest_line" | awk -F'\t' '{print $5}')"
       if [ -n "$r_perms" ] && printf '%s' "$r_perms" | grep -qE '^[0-7]{3,4}$'; then
         chmod "$r_perms" "$src"
       fi

@@ -29,6 +29,13 @@ UPDATEBTW_TIMEOUT="${UPDATEBTW_TIMEOUT:-7200}"
 
 case "${1:-help}" in
   update)
+    # SECURITY (inherent — issue #4: full root required):
+    # System package updates via pacman require root privileges. The entire
+    # update flow runs as root, meaning any vulnerability in the update chain
+    # (AUR helper, pacman, or these scripts) could lead to privilege escalation.
+    # The software cannot fulfill its purpose without root. Mitigations: AUR
+    # helper runs as unprivileged user via runuser, config validation, argument
+    # sanitization in _run_as_user.
     if [ "$(id -u)" -ne 0 ]; then
       echo "updatebtw: update requires root. Use: sudo updatebtw update" >&2
       exit 1
@@ -40,6 +47,16 @@ case "${1:-help}" in
         env -u UPDATERBTW_INHIBIT \
           UPDATERBTW_INHIBIT="$$-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' ')" \
           "$0" _update 2>/dev/null; then
+      # SECURITY (inherent — issue #5: shutdown inhibition blocks shutdown):
+      # systemd-inhibit --mode=block prevents shutdown/sleep during updates.
+      # If an update hangs (AUR build deadlock, network timeout, pacman DB
+      # corruption), shutdown is blocked until the UPDATEBTW_TIMEOUT (default
+      # 2 hours) fires. The timeout wraps a bash -c subprocess, and timeout's
+      # default SIGTERM does not propagate to grandchild processes (makepkg,
+      # pacman). Using --signal=SIGKILL would risk filesystem corruption from
+      # killed package operations. This is an inherent tension between "don't
+      # interrupt updates" and "allow shutdown."
+      # Mitigations: 2-hour timeout, pacman lock file check, rate limiting.
       exit 0
     fi
     . "$UPDATERBTW_ROOT/config.sh"
@@ -69,6 +86,12 @@ case "${1:-help}" in
     . "$UPDATERBTW_ROOT/backup.sh"
     . "$UPDATERBTW_ROOT/updater.sh"
     if [ -n "$SYSTEMD_INHIBIT" ]; then
+      # SECURITY (inherent — issue #5, continued):
+      # The timeout command wraps the update in a 2-hour limit. However,
+      # timeout sends SIGTERM to the bash -c process, which does not forward
+      # it to grandchild processes (yay, pacman, makepkg). The actual update
+      # may continue running past the timeout. SIGKILL would be more effective
+      # but risks corrupting the pacman database or leaving partial installs.
       timeout "$UPDATEBTW_TIMEOUT" bash -c 'source "$UPDATERBTW_ROOT/config.sh"; source "$UPDATERBTW_ROOT/backup.sh"; source "$UPDATERBTW_ROOT/updater.sh"; update_packages'
     else
       update_packages
@@ -183,8 +206,7 @@ case "${1:-help}" in
       aur_home="$(getent passwd "$aur_user" 2>/dev/null | cut -d: -f6)"
       userdel "$aur_user" 2>/dev/null || true
       if [ -n "$aur_home" ] && [ -d "$aur_home" ]; then
-        echo "Removing home directory ($aur_home)..."
-        rm -rf "$aur_home"
+        echo "Preserving home directory ($aur_home) — remove manually if desired."
       fi
     fi
     if [ "$aur_user" != "aur_builder" ] && id "aur_builder" >/dev/null 2>&1; then
@@ -192,8 +214,7 @@ case "${1:-help}" in
       legacy_home="$(getent passwd aur_builder 2>/dev/null | cut -d: -f6)"
       userdel aur_builder 2>/dev/null || true
       if [ -n "$legacy_home" ] && [ -d "$legacy_home" ]; then
-        echo "Removing home directory ($legacy_home)..."
-        rm -rf "$legacy_home"
+        echo "Preserving home directory ($legacy_home) — remove manually if desired."
       fi
     fi
 

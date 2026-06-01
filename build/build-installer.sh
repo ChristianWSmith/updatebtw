@@ -284,38 +284,74 @@ _install_aur_helper() {
       useradd -m "$user" 2>/dev/null || true
     fi
     mkdir -p /etc/sudoers.d
-    # Deliberately unrestricted pacman access — AUR helpers (yay/paru) invoke pacman
-    # with varying internal flags (--config, --overwrite, --dbonly, etc.) that cannot
-    # be exhaustively enumerated in a sudoers command allowlist. Narrowing to specific
-    # subcommands breaks package installation. The audit trail via log_output and the
-    # dedicated AUR user with no login shell provide the practical security boundary.
+    # SECURITY (inherent — issue #2: scoped pacman sudo):
+    # The AUR user requires NOPASSWD access to /usr/bin/pacman for specific
+    # subcommands only. AUR helpers (yay/paru) invoke pacman with a wide and
+    # evolving set of internal flags (--config, --overwrite, --dbonly, --asdeps,
+    # --recursive, etc.) that cannot be exhaustively enumerated. However, we
+    # can restrict the subcommands to only those needed: -S (sync/install),
+    # -U (upgrade local, scoped to build paths), -Q (query), -T (test deps),
+    # -D (database ops), -F (file search). This blocks -R (remove packages),
+    # which is never needed by an AUR helper during installation.
+    #
+    # Mitigations: Defaults log_output for audit trail, dedicated AUR user
+    # with no login shell, subcommand-scoped rules, -U path restriction.
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
 Defaults!/usr/bin/pacman log_output
-$user ALL=(root) NOPASSWD: /usr/bin/pacman
+$user ALL=(root) NOPASSWD: /usr/bin/pacman -S*, /usr/bin/pacman -U /home/$user/*.pkg.tar.*, /usr/bin/pacman -U /tmp/updatebtw-*/$user/*.pkg.tar.*, /usr/bin/pacman -Q*, /usr/bin/pacman -T*, /usr/bin/pacman -D*, /usr/bin/pacman -F*
 SUDOEOF
     chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
   fi
 
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"' EXIT
 
-  local helper_tmp
-  find /tmp -maxdepth 1 -name "updatebtw-${helper}.*" -type d -exec rm -rf {} + 2>/dev/null || true
-  helper_tmp="$(mktemp -d "/tmp/updatebtw-$helper.XXXXXX")"
+  local private_tmp
+  find /tmp -maxdepth 1 -name "updatebtw-${helper}.*" \( -type d -o -type l \) -exec rm -rf {} + 2>/dev/null || true
+  private_tmp="$(mktemp -d "/tmp/updatebtw-$helper.XXXXXX")"
+  chmod 700 "$private_tmp"
+  chown "$user:$user" "$private_tmp"
+  local helper_tmp="$private_tmp/helper"
+  mkdir -p "$helper_tmp"
   chown "$user:$user" "$helper_tmp"
-  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"; rm -rf "$helper_tmp"' EXIT
+  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"; rm -rf "$private_tmp"' EXIT
 
   local build_script
-  build_script="$(mktemp /tmp/updatebtw-build.XXXXXX)"
+  build_script="$private_tmp/build.sh"
+  # SECURITY (inherent — issue #1: untrusted PKGBUILD execution):
+  # makepkg executes the build() and package() functions from the PKGBUILD,
+  # which is downloaded from the AUR and runs as arbitrary shell code. A
+  # malicious or compromised PKGBUILD can execute any command during the
+  # build process, including installing trojaned packages via the scoped
+  # sudoers rule above. This is the fundamental trust model of the AUR —
+  # no tool that auto-builds from the AUR can eliminate this risk.
+  #
+  # Mitigations: PKGBUILD review prompt (defaults to [Y/n]), PKGBUILD
+  # SHA256 printed after build for manual verification, build runs as
+  # unprivileged AUR user (not root).
   cat > "$build_script" << BUILDEOF
 #!/bin/sh
 set -e
 HELPER="\$1"
 HELPER_TMP="\$2"
+# SECURITY (inherent — issue #6: supply chain trust):
+# The AUR helper is cloned over HTTPS from aur.archlinux.org. This trusts
+# the AUR infrastructure, its maintainers, and the TLS certificate chain.
+# A compromise of any AUR maintainer account, the AUR build servers, or a
+# TLS MITM attack could result in a malicious PKGBUILD being cloned and
+# built. The software has no mechanism for independent PKGBUILD verification
+# beyond the SHA256 printed after build for manual comparison.
 git clone --depth=1 "https://aur.archlinux.org/\$HELPER.git" "\$HELPER_TMP"
 cd "\$HELPER_TMP"
 
 # Install build dependencies as root before running makepkg
 # makepkg -makedepends requires sudo, which the aur user may not have
+# SECURITY (inherent — issue #11: auto dependency install):
+# The dependency list is parsed from the PKGBUILD via makepkg --printsrcinfo.
+# A malicious PKGBUILD could list unexpected dependencies, causing arbitrary
+# packages to be installed as root via sudo pacman -S. This is inherent to
+# the AUR build process — makepkg requires build dependencies to be installed
+# before it can run, and the dependency list comes from the untrusted PKGBUILD.
+# Mitigation: sudo is scoped to /usr/bin/pacman only (see issue #2).
 _deps="\$(makepkg --printsrcinfo 2>/dev/null | sed -n 's/^\tmakedepends = //p' | tr '\n' ' ')"
 if [ -n "\$_deps" ]; then
   sudo pacman -S --needed --noconfirm \$_deps 2>/dev/null || true
@@ -324,7 +360,7 @@ fi
 makepkg --noconfirm
 BUILDEOF
   chmod 755 "$build_script"
-  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"; rm -rf "$helper_tmp"' EXIT
+  trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"; rm -rf "$private_tmp"' EXIT
 
   # PKGBUILD review prompt before building (H3)
   if [ -t 0 ] && [ "${UPDATEBTW_AUTO_INSTALL_AUR:-}" != "1" ]; then
@@ -368,14 +404,14 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user-build" 2>/dev/null || true
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
-  # Deliberately unrestricted pacman access — AUR helpers (yay/paru) invoke pacman
-  # with varying internal flags (--config, --overwrite, --dbonly, etc.) that cannot
-  # be exhaustively enumerated in a sudoers command allowlist. Narrowing to specific
-  # subcommands breaks package installation. The audit trail via log_output and the
-  # dedicated AUR user with no login shell provide the practical security boundary.
+  # SECURITY (inherent — issue #2: scoped pacman sudo):
+  # See comment in _install_aur_helper() for full rationale. The AUR user
+  # needs access to specific pacman subcommands (-S, -U, -Q, -T, -D, -F) but
+  # not -R (remove). The -U path is restricted to the user's home and tmp
+  # build directories.
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
 Defaults!/usr/bin/pacman log_output
-$user ALL=(root) NOPASSWD: /usr/bin/pacman
+$user ALL=(root) NOPASSWD: /usr/bin/pacman -S*, /usr/bin/pacman -U /home/$user/*.pkg.tar.*, /usr/bin/pacman -U /tmp/updatebtw-*/$user/*.pkg.tar.*, /usr/bin/pacman -Q*, /usr/bin/pacman -T*, /usr/bin/pacman -D*, /usr/bin/pacman -F*
 SUDOEOF
   chmod 440 "/etc/sudoers.d/updatebtw-$user"
 }
@@ -452,6 +488,16 @@ echo "}" >> "$TEMP_INSTALLER"
 echo "" >> "$TEMP_INSTALLER"
 echo "enable_timer() {" >> "$TEMP_INSTALLER"
 echo "  systemctl daemon-reload 2>/dev/null || true" >> "$TEMP_INSTALLER"
+echo "" >> "$TEMP_INSTALLER"
+echo "  # Generate timer drop-in from configured schedule" >> "$TEMP_INSTALLER"
+echo "  local dropin_dir=\"/etc/systemd/system/updatebtw-update.timer.d\"" >> "$TEMP_INSTALLER"
+echo "  mkdir -p \"\$dropin_dir\"" >> "$TEMP_INSTALLER"
+echo "  local calendar" >> "$TEMP_INSTALLER"
+echo "  calendar=\"\$(calendar_from_config)\"" >> "$TEMP_INSTALLER"
+echo "  printf '[Timer]\nOnCalendar=%s\n' \"\$calendar\" > \"\$dropin_dir/schedule.conf\"" >> "$TEMP_INSTALLER"
+echo "  chmod 644 \"\$dropin_dir/schedule.conf\"" >> "$TEMP_INSTALLER"
+echo "" >> "$TEMP_INSTALLER"
+echo "  systemctl daemon-reload 2>/dev/null || true" >> "$TEMP_INSTALLER"
 echo "  systemctl enable --now updatebtw-update.timer 2>/dev/null || true" >> "$TEMP_INSTALLER"
 echo '  if [ "$RUN_AT_BOOT" = "true" ]; then' >> "$TEMP_INSTALLER"
 echo "    systemctl enable updatebtw-boot.service 2>/dev/null || true" >> "$TEMP_INSTALLER"
@@ -464,6 +510,15 @@ echo "#__END_OF_PAYLOADS__" >> "$TEMP_INSTALLER"
 # Compute hash of everything before the end-of-payloads delimiter,
 # excluding the SOURCES_HASH variable and the integrity hash comment line.
 # This ensures the hash value itself is not part of the hash computation.
+#
+# SECURITY (inherent — issue #7: self-referential integrity hash):
+# This SHA256 hash proves the installer was not modified after build, but
+# cannot prove the file came from the legitimate build process (provenance).
+# An attacker who replaces the entire installer.sh (e.g., MITM on the GitHub
+# raw content URL) would have a file where the embedded hash matches the
+# file's content. Without external signature verification (GPG, cosign, etc.),
+# provenance cannot be established. This is inherent to self-signed integrity
+# checks. Mitigations: HTTPS for download, separate .sha256 file.
 SOURCES_HASH="$(awk '/^#__END_OF_PAYLOADS__$/{exit} /^SOURCES_HASH=/{next} /^# Source integrity hash:/{next} {print}' "$TEMP_INSTALLER" | sha256sum | awk '{print $1}')"
 
 # Replace placeholder hash with actual hash

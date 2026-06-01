@@ -62,7 +62,7 @@ teardown() {
 
   run "$CLI" update
   [ "$status" -eq 0 ]
-  grep "yay -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
+  grep "yay -Syu --noconfirm" "$MOCK_LOG" >/dev/null
 }
 
 @test "cli update dispatchs paru when configured" {
@@ -82,7 +82,7 @@ EOF
 
   run "$CLI" update
   [ "$status" -eq 0 ]
-  grep "paru -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
+  grep "paru -Syu --noconfirm" "$MOCK_LOG" >/dev/null
 
   rm -f "$UPDATERBTW_CONFIG"
 }
@@ -138,7 +138,7 @@ SUB
   run "$CLI" update
   [ "$status" -eq 0 ]
   grep "systemd-inhibit" /tmp/mock_log >/dev/null
-  grep "yay -Syyuu --noconfirm" /tmp/mock_log >/dev/null
+  grep "yay -Syu --noconfirm" /tmp/mock_log >/dev/null
   grep "flatpak update --noninteractive" /tmp/mock_log >/dev/null
 }
 

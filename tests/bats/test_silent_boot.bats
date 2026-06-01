@@ -84,14 +84,14 @@ teardown() {
   rm -rf "/tmp/updatebtw-printk-test"
 }
 
-@test "patch_mkinitcpio replaces udev with systemd and removes fsck" {
+@test "patch_mkinitcpio replaces udev with systemd and keeps fsck" {
   local testfile="$(mktemp /tmp/updatebtw-mkinitcpio.XXXXXX)"
   cp "$FIXTURES_DIR/etc/mkinitcpio.conf" "$testfile"
 
   patch_mkinitcpio "$testfile"
 
-  # udev replaced with systemd, fsck removed per Arch Wiki
-  grep -E "HOOKS=\(base systemd autodetect modconf block filesystems keyboard\s*\)" "$testfile" >/dev/null
+  # udev replaced with systemd, fsck retained for filesystem safety
+  grep -E "HOOKS=\(base systemd autodetect modconf block filesystems keyboard fsck\s*\)" "$testfile" >/dev/null
   rm -f "$testfile"
 }
 
@@ -220,13 +220,13 @@ SCRIPT
   rm -f "$testfile"
 }
 
-@test "set_grub_silent sets GRUB_TIMEOUT=0" {
+@test "set_grub_silent sets GRUB_TIMEOUT=1" {
   local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
   cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
 
   set_grub_silent "$testfile"
 
-  grep "^GRUB_TIMEOUT=0$" "$testfile" >/dev/null
+  grep "^GRUB_TIMEOUT=1$" "$testfile" >/dev/null
   rm -f "$testfile"
 }
 
@@ -273,7 +273,7 @@ EOF
   set_grub_silent "$testfile"
 
   grep "^GRUB_DEFAULT=0$" "$testfile" >/dev/null
-  grep "^GRUB_TIMEOUT=0$" "$testfile" >/dev/null
+  grep "^GRUB_TIMEOUT=1$" "$testfile" >/dev/null
   grep "^GRUB_RECORDFAIL_TIMEOUT=10$" "$testfile" >/dev/null
   rm -f "$testfile"
 }
@@ -297,5 +297,15 @@ EOF
   [ "$count_default" -eq 1 ]
   [ "$count_timeout" -eq 1 ]
   [ "$count_recordfail" -eq 1 ]
+  rm -f "$testfile"
+}
+
+@test "set_grub_silent sets GRUB_TIMEOUT_STYLE=hidden" {
+  local testfile="$(mktemp /tmp/updatebtw-grub.XXXXXX)"
+  cp "$FIXTURES_DIR/etc/grub/grub" "$testfile"
+
+  set_grub_silent "$testfile"
+
+  grep "^GRUB_TIMEOUT_STYLE=hidden$" "$testfile" >/dev/null
   rm -f "$testfile"
 }

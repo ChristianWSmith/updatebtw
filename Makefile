@@ -7,7 +7,8 @@ all: installer.sh
 
 installer.sh: build/build-installer.sh $(SRC) $(LIBS) $(SYSTEMD_UNITS) $(CONFIG)
 	build/build-installer.sh > installer.sh
-	chmod +x installer.sh
+	chmod 700 installer.sh
+	chown root:root installer.sh 2>/dev/null || true
 	@echo "Generated installer.sh"
 
 test:

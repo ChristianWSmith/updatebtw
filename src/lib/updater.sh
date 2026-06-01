@@ -29,8 +29,6 @@ _check_rate_limit() {
     fi
   fi
 
-  date "+%s" > "$state_file"
-  chmod 600 "$state_file"
   return 0
 }
 
@@ -50,7 +48,8 @@ update_packages() {
     return 1
   fi
 
-  local pacman_lock="$UPDATERBTW_STATE_DIR/pacman.lock"
+  local pacman_lock="$UPDATERBTW_STATE_DIR/updatebtw.lock"
+  mkdir -p "$UPDATERBTW_STATE_DIR"
   exec 7> "$pacman_lock"
   if ! flock -n 7; then
     _notify error "Update Failed" "Another pacman process holds the database lock"
@@ -64,9 +63,18 @@ update_packages() {
   _notify info "updatebtw" "Starting system update"
   local helper="${AUR_HELPER:-yay}"
   local aur_user="${AUR_USER:-aur_builder}"
+  # SECURITY (inherent — issue #3: auto-install without review):
+  # The --noconfirm flag installs all available updates without user interaction.
+  # If a malicious package enters the official repos or AUR (supply chain
+  # compromise), it would be installed automatically. This is the fundamental
+  # tradeoff of automatic updates — convenience vs. review. The software cannot
+  # fulfill its purpose of unattended updates without this flag.
+  #
+  # Mitigations: rate limiting, update logging, desktop notifications,
+  # AUR helper runs as unprivileged user.
   case "$helper" in
-    yay)  _run_as_user "$aur_user" yay -Syyuu --noconfirm ;;
-    paru) _run_as_user "$aur_user" paru -Syyuu --noconfirm ;;
+    yay)  _run_as_user "$aur_user" yay -Syu --noconfirm ;;
+    paru) _run_as_user "$aur_user" paru -Syu --noconfirm ;;
   esac
 
   local exit_code=$?
@@ -81,17 +89,31 @@ update_packages() {
       flatpak_user="${SUDO_USER:-}"
     fi
     if [ -z "$flatpak_user" ]; then
+      # SECURITY (inherent — issue #13: flatpak user auto-detect):
+      # When FLATPAK_USER is not configured, we attempt to detect the active
+      # desktop user via loginctl. If parsing fails or returns the wrong user
+      # (e.g., headless system, multiple sessions, loginctl format change),
+      # flatpak updates are skipped rather than falling back to the AUR user.
+      # Flatpak installs are per-user; running as the wrong user updates the
+      # wrong installations. This is inherent to heuristic auto-detection
+      # without explicit configuration. Mitigation: explicit FLATPAK_USER
+      # config option; clear notification when skipped.
       flatpak_user="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
       [ -n "$flatpak_user" ] && flatpak_user="$(id -un "$flatpak_user" 2>/dev/null)" || flatpak_user=""
     fi
-    [ -z "$flatpak_user" ] && flatpak_user="$aur_user"
-    _run_as_user "$flatpak_user" flatpak update --noninteractive || {
-      _notify error "Flatpak Update Failed" "flatpak exited with code $?"
-      return 1
-    }
+    if [ -z "$flatpak_user" ]; then
+      _notify error "Flatpak Update Skipped" "FLATPAK_USER not configured and no active session detected"
+    else
+      _run_as_user "$flatpak_user" flatpak update --noninteractive || {
+        _notify error "Flatpak Update Failed" "flatpak exited with code $?"
+        return 1
+      }
+    fi
   fi
 
   _notify success "updatebtw" "Update complete"
+  date "+%s" > "$UPDATERBTW_STATE_DIR/last_update"
+  chmod 600 "$UPDATERBTW_STATE_DIR/last_update"
   [ -n "$_update_lock_fd" ] && flock -u "$_update_lock_fd" 2>/dev/null || true
   flock -u 7 2>/dev/null || true
   rm -f "$pacman_lock" 2>/dev/null || true
@@ -194,15 +216,25 @@ _notify() {
 }
 
 _run_as_user() {
+  # SECURITY (inherent — issue #10: AUR user delegation):
+  # Commands are executed as the AUR user via runuser or sudo. If the AUR
+  # user's environment is compromised (e.g., malicious config files in the
+  # user's home directory that the AUR helper reads), the compromise affects
+  # the update process. The AUR user is a local account that could be
+  # targeted by other local attackers. This is inherent to the multi-user
+  # execution model — we must delegate to an unprivileged user to limit
+  # the blast radius of AUR helper vulnerabilities.
+  #
+  # Mitigations: strict argument allowlist (only alphanumerics, _./:@,+=-),
+  # dedicated user account with no login shell, direct exec (no shell
+  # interpretation) via runuser -u / sudo -u.
   local user="$1"
   shift
   for arg in "$@"; do
-    case "$arg" in
-      *'$('*|*'`'*|*';'*|*'&'*|*'|'*)
-        echo "updatebtw: unsafe argument detected: $arg" >&2
-        return 1
-        ;;
-    esac
+    if ! printf '%s' "$arg" | grep -qE '^[a-zA-Z0-9_./:@,+=-]+$'; then
+      echo "updatebtw: unsafe argument detected: $arg" >&2
+      return 1
+    fi
   done
   if [ "$(id -un)" = "$user" ]; then
     "$@"
