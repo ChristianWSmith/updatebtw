@@ -1,6 +1,6 @@
 [Unit]
 Description=Scheduled updatebtw update
-Documentation=https://github.com/anomalyco/updatebtw
+Documentation=https://github.com/ChristianWSmith/updatebtw
 
 [Timer]
 Persistent=true
