@@ -63,7 +63,7 @@ restore_file() {
 
   if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
     local expected_hash
-    expected_hash="$(grep "^$src " "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1 | awk '{print $2}')"
+    expected_hash="$(awk -v src="$src" '$1 == src {print $2}' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
     if [ -n "$expected_hash" ]; then
       local actual_hash
       actual_hash="$(sha256sum "$latest" | awk '{print $1}')"
@@ -78,7 +78,7 @@ restore_file() {
 
   if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
     local manifest_line
-    manifest_line="$(grep "^$src " "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
+    manifest_line="$(awk -v src="$src" '$1 == src' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
     if [ -n "$manifest_line" ]; then
       local r_perms r_owner r_group
       r_perms="$(printf '%s' "$manifest_line" | awk '{print $3}')"
@@ -106,9 +106,16 @@ list_backups() {
 _rotate_backups() {
   local name="$1"
   local keep="${UPDATERBTW_BACKUP_KEEP:-10}"
-  ls -t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null \
-    | tail -n +$((keep + 1)) \
-    | xargs rm -f 2>/dev/null || true
+  local files
+  files="$(ls -1t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null || true)"
+  [ -n "$files" ] || return 0
+  local count=0
+  while IFS= read -r f; do
+    count=$((count + 1))
+    if [ "$count" -gt "$keep" ]; then
+      rm -f "$f"
+    fi
+  done <<< "$files"
 }
 
 _cleanup_old_backups() {

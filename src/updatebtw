@@ -12,9 +12,14 @@ UPDATERBTW_ROOT="$(readlink -f "$UPDATERBTW_ROOT" 2>/dev/null)" || {
   exit 1
 }
 case "$UPDATERBTW_ROOT" in
-  */lib/updatebtw|*/src/lib) ;;
+  /usr/lib/updatebtw) ;;
+  /tmp/*|/var/tmp/*)
+    echo "updatebtw: UPDATERBTW_ROOT must not be in a world-writable directory" >&2
+    exit 1
+    ;;
+  */updatebtw/src/lib) ;;
   *)
-    echo "updatebtw: UPDATERBTW_ROOT must point to a valid updatebtw lib directory" >&2
+    echo "updatebtw: UPDATERBTW_ROOT must be /usr/lib/updatebtw or a project src/lib directory" >&2
     exit 1
     ;;
 esac
@@ -175,12 +180,21 @@ case "${1:-help}" in
     aur_user="${AUR_USER:-aur_builder}"
     if id "$aur_user" >/dev/null 2>&1; then
       echo "Removing AUR user ($aur_user)..."
+      aur_home="$(getent passwd "$aur_user" 2>/dev/null | cut -d: -f6)"
       userdel "$aur_user" 2>/dev/null || true
-      echo "Note: Home directory for $aur_user was preserved."
+      if [ -n "$aur_home" ] && [ -d "$aur_home" ]; then
+        echo "Removing home directory ($aur_home)..."
+        rm -rf "$aur_home"
+      fi
     fi
     if [ "$aur_user" != "aur_builder" ] && id "aur_builder" >/dev/null 2>&1; then
       echo "Removing legacy build user (aur_builder)..."
+      legacy_home="$(getent passwd aur_builder 2>/dev/null | cut -d: -f6)"
       userdel aur_builder 2>/dev/null || true
+      if [ -n "$legacy_home" ] && [ -d "$legacy_home" ]; then
+        echo "Removing home directory ($legacy_home)..."
+        rm -rf "$legacy_home"
+      fi
     fi
 
     echo "updatebtw has been uninstalled."

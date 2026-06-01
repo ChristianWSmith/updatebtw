@@ -55,6 +55,11 @@ _install_aur_helper() {
       useradd -m "$user" 2>/dev/null || true
     fi
     mkdir -p /etc/sudoers.d
+    # Deliberately unrestricted pacman access — AUR helpers (yay/paru) invoke pacman
+    # with varying internal flags (--config, --overwrite, --dbonly, etc.) that cannot
+    # be exhaustively enumerated in a sudoers command allowlist. Narrowing to specific
+    # subcommands breaks package installation. The audit trail via log_output and the
+    # dedicated AUR user with no login shell provide the practical security boundary.
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
 Defaults!/usr/bin/pacman log_output
 $user ALL=(root) NOPASSWD: /usr/bin/pacman
@@ -65,8 +70,7 @@ SUDOEOF
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"' EXIT
 
   local helper_tmp
-  # Clean up any stale directories from previous failed runs
-  rm -rf /tmp/updatebtw-"$helper".* 2>/dev/null || true
+  find /tmp -maxdepth 1 -name "updatebtw-${helper}.*" -type d -exec rm -rf {} + 2>/dev/null || true
   helper_tmp="$(mktemp -d "/tmp/updatebtw-$helper.XXXXXX")"
   chown "$user:$user" "$helper_tmp"
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"; rm -rf "$helper_tmp"' EXIT
@@ -98,11 +102,10 @@ BUILDEOF
     echo "==> AUR helper '$helper' will be built from the AUR."
     echo "    Review the PKGBUILD before proceeding:"
     echo "    https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
-    printf "    Continue? [y/N] "
+    printf "    Continue? [Y/n] "
     read -r _aur_answer
     case "$_aur_answer" in
-      y|Y) ;;
-      *) echo "Aborted."; return 1 ;;
+      n|N) echo "Aborted."; return 1 ;;
     esac
   fi
 
@@ -136,6 +139,11 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user-build" 2>/dev/null || true
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
+  # Deliberately unrestricted pacman access — AUR helpers (yay/paru) invoke pacman
+  # with varying internal flags (--config, --overwrite, --dbonly, etc.) that cannot
+  # be exhaustively enumerated in a sudoers command allowlist. Narrowing to specific
+  # subcommands breaks package installation. The audit trail via log_output and the
+  # dedicated AUR user with no login shell provide the practical security boundary.
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
 Defaults!/usr/bin/pacman log_output
 $user ALL=(root) NOPASSWD: /usr/bin/pacman
@@ -310,10 +318,16 @@ install_system_files() {
 
 install_systemd_units() {
   local unit_dir="${UPDATERBTW_UNIT_DIR:-/etc/systemd/system}"
+  local src_dir
+  src_dir="$(readlink -f "$UPDATERBTW_ROOT/../systemd" 2>/dev/null)" || return 1
+  case "$src_dir" in
+    */updatebtw/systemd) ;;
+    *) echo "updatebtw: invalid systemd unit directory" >&2; return 1 ;;
+  esac
   mkdir -p "$unit_dir"
-  install -Dm644 "$UPDATERBTW_ROOT/../systemd/updatebtw-update.service" "$unit_dir/updatebtw-update.service" 2>/dev/null || true
-  install -Dm644 "$UPDATERBTW_ROOT/../systemd/updatebtw-update.timer" "$unit_dir/updatebtw-update.timer" 2>/dev/null || true
-  install -Dm644 "$UPDATERBTW_ROOT/../systemd/updatebtw-boot.service" "$unit_dir/updatebtw-boot.service" 2>/dev/null || true
+  install -Dm644 "$src_dir/updatebtw-update.service" "$unit_dir/updatebtw-update.service" 2>/dev/null || true
+  install -Dm644 "$src_dir/updatebtw-update.timer" "$unit_dir/updatebtw-update.timer" 2>/dev/null || true
+  install -Dm644 "$src_dir/updatebtw-boot.service" "$unit_dir/updatebtw-boot.service" 2>/dev/null || true
 }
 
 enable_timer() {
