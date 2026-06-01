@@ -8,6 +8,7 @@ Wants=network-online.target
 Type=oneshot
 ExecStart=/usr/bin/updatebtw update
 Environment=SYSTEMD_INHIBIT=1
+Environment=UPDATERBTW_ROOT=/usr/lib/updatebtw
 StandardOutput=journal
 StandardError=journal
 

@@ -7,13 +7,14 @@ UPDATERBTW_BACKUP_MANIFEST="${UPDATERBTW_BACKUP_MANIFEST:-/var/lib/updatebtw/bac
 backup_file() {
   local src="$1"
   [ -f "$src" ] || return 1
+  [ ! -L "$src" ] || { echo "updatebtw: $src is a symlink, refusing" >&2; return 1; }
   mkdir -p "$UPDATERBTW_BACKUP_DIR"
   chmod 700 "$UPDATERBTW_BACKUP_DIR"
   local name
   name="$(basename "$src")"
   local ts rand
   ts="$(date "+%Y%m%d_%H%M%S")"
-  rand="$(head -c 4 /dev/urandom | od -An -tx4 | tr -d ' ')"
+  rand="$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   local backup_path="$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
   cp -a "$src" "$backup_path"
   chmod 600 "$backup_path"
@@ -25,8 +26,19 @@ backup_file() {
   perms="$(stat -c '%a' "$src")"
   owner="$(stat -c '%u' "$src")"
   group="$(stat -c '%g' "$src")"
-  grep -qxF "$src" "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || echo "$src" >> "$UPDATERBTW_BACKUP_MANIFEST"
-  echo "$src $hash $perms $owner $group" >> "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
+  local tmp_manifest tmp_hashes
+  tmp_manifest="$(mktemp "${UPDATERBTW_BACKUP_MANIFEST}.XXXXXX")"
+  tmp_hashes="$(mktemp "${UPDATERBTW_BACKUP_MANIFEST}.hashes.XXXXXX")"
+  if [ -f "$UPDATERBTW_BACKUP_MANIFEST" ]; then
+    cp "$UPDATERBTW_BACKUP_MANIFEST" "$tmp_manifest"
+  fi
+  if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
+    cp "${UPDATERBTW_BACKUP_MANIFEST}.hashes" "$tmp_hashes"
+  fi
+  grep -qxF "$src" "$tmp_manifest" 2>/dev/null || echo "$src" >> "$tmp_manifest"
+  echo "$src $hash $perms $owner $group" >> "$tmp_hashes"
+  mv -f "$tmp_manifest" "$UPDATERBTW_BACKUP_MANIFEST"
+  mv -f "$tmp_hashes" "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
   chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
   chmod 600 "${UPDATERBTW_BACKUP_MANIFEST}.hashes" 2>/dev/null || true
 

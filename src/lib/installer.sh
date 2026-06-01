@@ -56,6 +56,7 @@ _install_aur_helper() {
     fi
     mkdir -p /etc/sudoers.d
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
+Defaults!/usr/bin/pacman log_output
 $user ALL=(root) NOPASSWD: /usr/bin/pacman
 SUDOEOF
     chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
@@ -71,7 +72,7 @@ SUDOEOF
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"; rm -rf "$helper_tmp"' EXIT
 
   local build_script
-  build_script="$(mktemp /tmp/updatebtw-build.XXXXXX.sh)"
+  build_script="$(mktemp /tmp/updatebtw-build.XXXXXX)"
   cat > "$build_script" << BUILDEOF
 #!/bin/sh
 set -e
@@ -92,10 +93,23 @@ BUILDEOF
   chmod 755 "$build_script"
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"; rm -rf "$helper_tmp"' EXIT
 
+  # PKGBUILD review prompt before building (H3)
+  if [ -t 0 ] && [ "${UPDATEBTW_AUTO_INSTALL_AUR:-}" != "1" ]; then
+    echo "==> AUR helper '$helper' will be built from the AUR."
+    echo "    Review the PKGBUILD before proceeding:"
+    echo "    https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
+    printf "    Continue? [y/N] "
+    read -r _aur_answer
+    case "$_aur_answer" in
+      y|Y) ;;
+      *) echo "Aborted."; return 1 ;;
+    esac
+  fi
+
   if [ "$(id -un)" = "$user" ]; then
     sh "$build_script" "$helper" "$helper_tmp"
   else
-    su - "$user" -c "sh '$build_script' '$helper' '$helper_tmp'"
+    su - "$user" -s /bin/sh -- "$build_script" "$helper" "$helper_tmp"
   fi
 
   if [ -f "$helper_tmp/PKGBUILD" ]; then
@@ -123,6 +137,7 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
+Defaults!/usr/bin/pacman log_output
 $user ALL=(root) NOPASSWD: /usr/bin/pacman
 SUDOEOF
   chmod 440 "/etc/sudoers.d/updatebtw-$user"

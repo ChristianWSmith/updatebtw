@@ -16,6 +16,9 @@ test:
 integration:
 	cd tests && ./integration/run-integration-tests.sh
 
+lint:
+	shellcheck src/updatebtw src/lib/*.sh build/build-installer.sh
+
 clean:
 	rm -f installer.sh
 

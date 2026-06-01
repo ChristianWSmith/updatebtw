@@ -103,13 +103,26 @@ runuser() {
 # Mock su — intercept user switching, execute command directly
 su() {
   echo "su $*" >> "$MOCK_LOG"
-  local cmd="" next=false
+  # Handle both old `su -c "cmd"` and new `su -s /bin/sh -- script args` patterns
+  local args=() after_dd=false
   for arg in "$@"; do
-    if $next; then
+    if $after_dd; then
+      args+=("$arg")
+    fi
+    [ "$arg" = "--" ] && after_dd=true
+  done
+  if [ ${#args[@]} -gt 0 ]; then
+    "${args[@]}"
+    return $?
+  fi
+  # Fallback: old -c pattern
+  local cmd="" found_c=false
+  for arg in "$@"; do
+    if $found_c; then
       cmd="$arg"
       break
     fi
-    [ "$arg" = "-c" ] && next=true
+    [ "$arg" = "-c" ] && found_c=true
   done
   if [ -n "$cmd" ]; then
     eval "$cmd"

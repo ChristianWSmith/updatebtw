@@ -196,6 +196,14 @@ _notify() {
 _run_as_user() {
   local user="$1"
   shift
+  for arg in "$@"; do
+    case "$arg" in
+      *'$('*|*'`'*|*';'*|*'&'*|*'|'*)
+        echo "updatebtw: unsafe argument detected: $arg" >&2
+        return 1
+        ;;
+    esac
+  done
   if [ "$(id -un)" = "$user" ]; then
     "$@"
   elif command -v runuser >/dev/null 2>&1; then

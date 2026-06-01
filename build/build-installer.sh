@@ -27,7 +27,7 @@ _verify_integrity() {
   fi
 
   local current_hash
-  current_hash="$(awk '/^#__END_OF_PAYLOADS__$/{exit} {print}' "$0" | sha256sum | awk '{print $1}')"
+  current_hash="$(awk '/^#__END_OF_PAYLOADS__$/{exit} /^SOURCES_HASH=/{next} /^# Source integrity hash:/{next} {print}' "$0" | sha256sum | awk '{print $1}')"
 
   if [ -n "$current_hash" ] && [ "$current_hash" != "$SOURCES_HASH" ]; then
     echo "==> updatebtw: WARNING — source integrity check failed!" >&2
@@ -55,6 +55,12 @@ if [ ! -t 0 ] && [ "${1:-}" != "--non-interactive" ]; then
 fi
 
 main() {
+  _verify_integrity || {
+    echo "==> updatebtw: ABORTING — source integrity check failed." >&2
+    echo "    The installer may have been tampered with." >&2
+    exit 1
+  }
+
   _check_root
 
   local _non_interactive=false
@@ -279,6 +285,7 @@ _install_aur_helper() {
     fi
     mkdir -p /etc/sudoers.d
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
+Defaults!/usr/bin/pacman log_output
 $user ALL=(root) NOPASSWD: /usr/bin/pacman
 SUDOEOF
     chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
@@ -294,7 +301,7 @@ SUDOEOF
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"; rm -rf "$helper_tmp"' EXIT
 
   local build_script
-  build_script="$(mktemp /tmp/updatebtw-build.XXXXXX.sh)"
+  build_script="$(mktemp /tmp/updatebtw-build.XXXXXX)"
   cat > "$build_script" << BUILDEOF
 #!/bin/sh
 set -e
@@ -315,10 +322,23 @@ BUILDEOF
   chmod 755 "$build_script"
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"; rm -rf "$helper_tmp"' EXIT
 
+  # PKGBUILD review prompt before building (H3)
+  if [ -t 0 ] && [ "${UPDATEBTW_AUTO_INSTALL_AUR:-}" != "1" ]; then
+    echo "==> AUR helper '$helper' will be built from the AUR."
+    echo "    Review the PKGBUILD before proceeding:"
+    echo "    https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
+    printf "    Continue? [y/N] "
+    read -r _aur_answer
+    case "$_aur_answer" in
+      y|Y) ;;
+      *) echo "Aborted."; return 1 ;;
+    esac
+  fi
+
   if [ "$(id -un)" = "$user" ]; then
     sh "$build_script" "$helper" "$helper_tmp"
   else
-    su - "$user" -c "sh '$build_script' '$helper' '$helper_tmp'"
+    su - "$user" -s /bin/sh -- "$build_script" "$helper" "$helper_tmp"
   fi
 
   if [ -f "$helper_tmp/PKGBUILD" ]; then
@@ -346,6 +366,7 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
+Defaults!/usr/bin/pacman log_output
 $user ALL=(root) NOPASSWD: /usr/bin/pacman
 SUDOEOF
   chmod 440 "/etc/sudoers.d/updatebtw-$user"
@@ -404,12 +425,6 @@ embed_payload systemd/updatebtw-update.timer /etc/systemd/system/updatebtw-updat
 embed_payload systemd/updatebtw-boot.service /etc/systemd/system/updatebtw-boot.service 644
 embed_payload config/updatebtw.conf /etc/updatebtw/updatebtw.conf 600
 
-# Compute hash of everything before the end-of-payloads delimiter
-SOURCES_HASH="$(awk '/^#__END_OF_PAYLOADS__$/{exit} {print}' "$TEMP_INSTALLER" | sha256sum | awk '{print $1}')"
-
-# Replace placeholder hash with actual hash
-sed -i "s/PLACEHOLDER_HASH/$SOURCES_HASH/g" "$TEMP_INSTALLER"
-
 # Generate install_system_files() and install_systemd_units()
 echo "" >> "$TEMP_INSTALLER"
 echo "install_system_files() {" >> "$TEMP_INSTALLER"
@@ -437,5 +452,13 @@ echo "}" >> "$TEMP_INSTALLER"
 echo "" >> "$TEMP_INSTALLER"
 echo "main \"\$@\"" >> "$TEMP_INSTALLER"
 echo "#__END_OF_PAYLOADS__" >> "$TEMP_INSTALLER"
+
+# Compute hash of everything before the end-of-payloads delimiter,
+# excluding the SOURCES_HASH variable and the integrity hash comment line.
+# This ensures the hash value itself is not part of the hash computation.
+SOURCES_HASH="$(awk '/^#__END_OF_PAYLOADS__$/{exit} /^SOURCES_HASH=/{next} /^# Source integrity hash:/{next} {print}' "$TEMP_INSTALLER" | sha256sum | awk '{print $1}')"
+
+# Replace placeholder hash with actual hash
+sed -i "s/PLACEHOLDER_HASH/$SOURCES_HASH/g" "$TEMP_INSTALLER"
 
 cat "$TEMP_INSTALLER"

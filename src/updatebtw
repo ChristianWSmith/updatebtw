@@ -2,6 +2,11 @@
 # updatebtw — Arch Linux automatic update utility
 
 UPDATERBTW_ROOT="${UPDATERBTW_ROOT:-/usr/lib/updatebtw}"
+# Running via sudo — ignore user-supplied UPDATERBTW_ROOT to prevent loading trojaned libs
+if [ -n "${SUDO_USER:-}" ] && [ "${UPDATERBTW_ROOT:-/usr/lib/updatebtw}" != "/usr/lib/updatebtw" ]; then
+  echo "updatebtw: UPDATERBTW_ROOT override ignored when running via sudo" >&2
+  UPDATERBTW_ROOT="/usr/lib/updatebtw"
+fi
 UPDATERBTW_ROOT="$(readlink -f "$UPDATERBTW_ROOT" 2>/dev/null)" || {
   echo "updatebtw: invalid UPDATERBTW_ROOT" >&2
   exit 1
