@@ -73,8 +73,8 @@ update_packages() {
   # Mitigations: rate limiting, update logging, desktop notifications,
   # AUR helper runs as unprivileged user.
   case "$helper" in
-    yay)  _run_as_user "$aur_user" yay -Syu --noconfirm ;;
-    paru) _run_as_user "$aur_user" paru -Syu --noconfirm ;;
+    yay)  _run_as_user "$aur_user" yay -Syyuu --noconfirm ;;
+    paru) _run_as_user "$aur_user" paru -Syyuu --noconfirm ;;
   esac
 
   local exit_code=$?

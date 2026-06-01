@@ -64,7 +64,7 @@ EOF
   local content
   content="$(cat /etc/mkinitcpio.conf)"
   [[ "$content" == *"systemd"* ]]
-  [[ "$content" != *"fsck"* ]]
+  [[ "$content" == *"fsck"* ]]
 }
 
 @test "silent boot writes printk config" {
@@ -80,7 +80,7 @@ EOF
   sudo SILENT_BOOT=true bash "$INSTALLER" --non-interactive
 
   local fsck_content
-  fsck_content="$(cat /usr/lib/systemd/system/systemd-fsck@.service)"
+  fsck_content="$(cat /etc/systemd/system/systemd-fsck@.service.d/silent.conf)"
   [[ "$fsck_content" == *"StandardOutput=null"* ]]
   [[ "$fsck_content" == *"StandardError=journal+console"* ]]
 }

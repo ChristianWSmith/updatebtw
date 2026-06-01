@@ -284,21 +284,16 @@ _install_aur_helper() {
       useradd -m "$user" 2>/dev/null || true
     fi
     mkdir -p /etc/sudoers.d
-    # SECURITY (inherent — issue #2: scoped pacman sudo):
-    # The AUR user requires NOPASSWD access to /usr/bin/pacman for specific
-    # subcommands only. AUR helpers (yay/paru) invoke pacman with a wide and
-    # evolving set of internal flags (--config, --overwrite, --dbonly, --asdeps,
-    # --recursive, etc.) that cannot be exhaustively enumerated. However, we
-    # can restrict the subcommands to only those needed: -S (sync/install),
-    # -U (upgrade local, scoped to build paths), -Q (query), -T (test deps),
-    # -D (database ops), -F (file search). This blocks -R (remove packages),
-    # which is never needed by an AUR helper during installation.
-    #
-    # Mitigations: Defaults log_output for audit trail, dedicated AUR user
-    # with no login shell, subcommand-scoped rules, -U path restriction.
+    # SECURITY (inherent — issue #2: blanket pacman sudo):
+    # The AUR user requires unrestricted NOPASSWD access to /usr/bin/pacman.
+    # AUR helpers invoke pacman with a wide and evolving set of flags that
+    # cannot be exhaustively enumerated or safely restricted. This grants
+    # the AUR user the ability to install, remove, query, and modify any
+    # packages. Mitigations: log_output for audit trail, dedicated AUR user
+    # with no login shell.
     cat > "/etc/sudoers.d/updatebtw-$user-build" << SUDOEOF
 Defaults!/usr/bin/pacman log_output
-$user ALL=(root) NOPASSWD: /usr/bin/pacman -S*, /usr/bin/pacman -U /home/$user/*.pkg.tar.*, /usr/bin/pacman -U /tmp/updatebtw-*/$user/*.pkg.tar.*, /usr/bin/pacman -Q*, /usr/bin/pacman -T*, /usr/bin/pacman -D*, /usr/bin/pacman -F*
+$user ALL=(root) NOPASSWD: /usr/bin/pacman
 SUDOEOF
     chmod 440 "/etc/sudoers.d/updatebtw-$user-build"
   fi
@@ -404,14 +399,14 @@ _setup_aur_user() {
   rm -f "/etc/sudoers.d/updatebtw-$user-build" 2>/dev/null || true
   rm -f "/etc/sudoers.d/updatebtw-$user" 2>/dev/null || true
   mkdir -p /etc/sudoers.d
-  # SECURITY (inherent — issue #2: scoped pacman sudo):
+  # SECURITY (inherent — issue #2: blanket pacman sudo):
   # See comment in _install_aur_helper() for full rationale. The AUR user
-  # needs access to specific pacman subcommands (-S, -U, -Q, -T, -D, -F) but
-  # not -R (remove). The -U path is restricted to the user's home and tmp
-  # build directories.
+  # needs unrestricted access to /usr/bin/pacman. The -U path restriction
+  # and subcommand-scoped rules are dropped because AUR helpers use a wide
+  # and evolving set of pacman flags that cannot be safely enumerated.
   cat > "/etc/sudoers.d/updatebtw-$user" << SUDOEOF
 Defaults!/usr/bin/pacman log_output
-$user ALL=(root) NOPASSWD: /usr/bin/pacman -S*, /usr/bin/pacman -U /home/$user/*.pkg.tar.*, /usr/bin/pacman -U /tmp/updatebtw-*/$user/*.pkg.tar.*, /usr/bin/pacman -Q*, /usr/bin/pacman -T*, /usr/bin/pacman -D*, /usr/bin/pacman -F*
+$user ALL=(root) NOPASSWD: /usr/bin/pacman
 SUDOEOF
   chmod 440 "/etc/sudoers.d/updatebtw-$user"
 }
