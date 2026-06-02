@@ -216,43 +216,45 @@ _notify() {
 }
 
 _run_flatpak() {
-  # Flatpak requires a proper user environment (HOME, XDG_RUNTIME_DIR,
-  # DBUS_SESSION_BUS_ADDRESS) to access per-user installations and
-  # communicate with the session bus. Unlike generic commands, flatpak
-  # will fail with exit code 1 if these are missing.
   local user="$1"
   if [ "$(id -un)" = "$user" ]; then
     flatpak update --noninteractive
   elif command -v runuser >/dev/null 2>&1; then
-    local uid home_dir bus_path
+    local uid home_dir bus_path xdg_data_dirs
     uid="$(id -u "$user" 2>/dev/null)" || return 1
     home_dir="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)" || return 1
     bus_path="/run/user/$uid/bus"
+    xdg_data_dirs="$home_dir/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share"
     if [ -S "$bus_path" ]; then
       runuser -u "$user" -- env \
         HOME="$home_dir" \
         XDG_RUNTIME_DIR="/run/user/$uid" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
+        XDG_DATA_DIRS="$xdg_data_dirs" \
         flatpak update --noninteractive
     else
       runuser -u "$user" -- env \
         HOME="$home_dir" \
+        XDG_DATA_DIRS="$xdg_data_dirs" \
         flatpak update --noninteractive
     fi
   elif command -v sudo >/dev/null 2>&1; then
-    local uid home_dir bus_path
+    local uid home_dir bus_path xdg_data_dirs
     uid="$(id -u "$user" 2>/dev/null)" || return 1
     home_dir="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)" || return 1
     bus_path="/run/user/$uid/bus"
+    xdg_data_dirs="$home_dir/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share"
     if [ -S "$bus_path" ]; then
       sudo -u "$user" -- env \
         HOME="$home_dir" \
         XDG_RUNTIME_DIR="/run/user/$uid" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
+        XDG_DATA_DIRS="$xdg_data_dirs" \
         flatpak update --noninteractive
     else
       sudo -u "$user" -- env \
         HOME="$home_dir" \
+        XDG_DATA_DIRS="$xdg_data_dirs" \
         flatpak update --noninteractive
     fi
   else
