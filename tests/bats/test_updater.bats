@@ -40,14 +40,15 @@ teardown() {
   grep "paru -Syyuu --noconfirm" "$MOCK_LOG" >/dev/null
 }
 
-@test "update_packages runs flatpak" {
+@test "update_packages runs flatpak system and user" {
   AUR_HELPER="paru"
   UPDATE_FREQUENCY="weekly"
   ENABLE_REFLECTOR="false"
   write_config
 
   run update_packages
-  grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update --system --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update --user --noninteractive" "$MOCK_LOG" >/dev/null
 }
 
 @test "update_packages calls notify-send on success" {
@@ -130,7 +131,8 @@ teardown() {
   write_config
 
   run update_packages
-  grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update --system --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update --user --noninteractive" "$MOCK_LOG" >/dev/null
   grep "runuser -u aur_builder -- env" "$MOCK_LOG" >/dev/null
 }
 
@@ -143,7 +145,20 @@ teardown() {
   write_config
 
   run update_packages
-  grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update --system --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update --user --noninteractive" "$MOCK_LOG" >/dev/null
   grep "runuser -u builder -- env" "$MOCK_LOG" >/dev/null
   ! grep "runuser -u aur_builder -- env" "$MOCK_LOG" >/dev/null
+}
+
+@test "_run_flatpak_system runs flatpak with --system flag" {
+  run _run_flatpak_system
+  [ "$status" -eq 0 ]
+  grep "flatpak update --system --noninteractive" "$MOCK_LOG" >/dev/null
+}
+
+@test "_run_flatpak uses --user flag" {
+  run _run_flatpak aur_builder
+  [ "$status" -eq 0 ]
+  grep "flatpak update --user --noninteractive" "$MOCK_LOG" >/dev/null
 }
