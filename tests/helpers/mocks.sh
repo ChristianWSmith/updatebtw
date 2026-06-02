@@ -97,7 +97,25 @@ runuser() {
     fi
     [ "$arg" = "--" ] && after_dd=true
   done
-  "${args[@]}"
+  # Strip leading env and VAR=value assignments, then execute remaining command
+  # so mock functions (flatpak, yay, etc.) are available in the current shell
+  local stripped=() skip_env=true
+  for arg in "${args[@]}"; do
+    if $skip_env && [ "$arg" = "env" ]; then
+      skip_env=false
+      continue
+    fi
+    if $skip_env; then
+      stripped+=("$arg")
+      continue
+    fi
+    if [[ "$arg" == *"="* ]]; then
+      continue
+    fi
+    skip_env=false
+    stripped+=("$arg")
+  done
+  "${stripped[@]}"
 }
 
 # Mock su — intercept user switching, execute command directly

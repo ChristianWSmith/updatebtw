@@ -104,7 +104,7 @@ update_packages() {
     if [ -z "$flatpak_user" ]; then
       _notify error "Flatpak Update Skipped" "FLATPAK_USER not configured and no active session detected"
     else
-      _run_as_user "$flatpak_user" flatpak update --noninteractive || {
+      _run_flatpak "$flatpak_user" || {
         _notify error "Flatpak Update Failed" "flatpak exited with code $?"
         return 1
       }
@@ -213,6 +213,52 @@ _notify() {
     notify-send -i "$icon" -u "$urgency" -a "updatebtw" "$summary" "$body" 2>/dev/null || true
   fi
   return 0
+}
+
+_run_flatpak() {
+  # Flatpak requires a proper user environment (HOME, XDG_RUNTIME_DIR,
+  # DBUS_SESSION_BUS_ADDRESS) to access per-user installations and
+  # communicate with the session bus. Unlike generic commands, flatpak
+  # will fail with exit code 1 if these are missing.
+  local user="$1"
+  if [ "$(id -un)" = "$user" ]; then
+    flatpak update --noninteractive
+  elif command -v runuser >/dev/null 2>&1; then
+    local uid home_dir bus_path
+    uid="$(id -u "$user" 2>/dev/null)" || return 1
+    home_dir="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)" || return 1
+    bus_path="/run/user/$uid/bus"
+    if [ -S "$bus_path" ]; then
+      runuser -u "$user" -- env \
+        HOME="$home_dir" \
+        XDG_RUNTIME_DIR="/run/user/$uid" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
+        flatpak update --noninteractive
+    else
+      runuser -u "$user" -- env \
+        HOME="$home_dir" \
+        flatpak update --noninteractive
+    fi
+  elif command -v sudo >/dev/null 2>&1; then
+    local uid home_dir bus_path
+    uid="$(id -u "$user" 2>/dev/null)" || return 1
+    home_dir="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)" || return 1
+    bus_path="/run/user/$uid/bus"
+    if [ -S "$bus_path" ]; then
+      sudo -u "$user" -- env \
+        HOME="$home_dir" \
+        XDG_RUNTIME_DIR="/run/user/$uid" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
+        flatpak update --noninteractive
+    else
+      sudo -u "$user" -- env \
+        HOME="$home_dir" \
+        flatpak update --noninteractive
+    fi
+  else
+    echo "updatebtw: cannot run flatpak as user '$user' — neither runuser nor sudo available" >&2
+    return 1
+  fi
 }
 
 _run_as_user() {

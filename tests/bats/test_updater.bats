@@ -131,7 +131,7 @@ teardown() {
 
   run update_packages
   grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
-  grep "runuser -u aur_builder -- flatpak" "$MOCK_LOG" >/dev/null
+  grep "runuser -u aur_builder -- env" "$MOCK_LOG" >/dev/null
 }
 
 @test "update_packages runs flatpak as FLATPAK_USER when different from AUR_USER" {
@@ -144,6 +144,6 @@ teardown() {
 
   run update_packages
   grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
-  grep "runuser -u builder -- flatpak" "$MOCK_LOG" >/dev/null
-  ! grep "runuser -u aur_builder -- flatpak" "$MOCK_LOG" >/dev/null
+  grep "runuser -u builder -- env" "$MOCK_LOG" >/dev/null
+  ! grep "runuser -u aur_builder -- env" "$MOCK_LOG" >/dev/null
 }
