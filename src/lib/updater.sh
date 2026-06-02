@@ -84,6 +84,7 @@ update_packages() {
   fi
 
   if command -v flatpak >/dev/null 2>&1; then
+    _run_flatpak_system || _notify error "System Flatpak Update Failed" "flatpak --system exited with code $?"
     local flatpak_user="${FLATPAK_USER:-}"
     if [ -z "$flatpak_user" ]; then
       flatpak_user="${SUDO_USER:-}"
@@ -104,10 +105,7 @@ update_packages() {
     if [ -z "$flatpak_user" ]; then
       _notify error "Flatpak Update Skipped" "FLATPAK_USER not configured and no active session detected"
     else
-      _run_flatpak "$flatpak_user" || {
-        _notify error "Flatpak Update Failed" "flatpak exited with code $?"
-        return 1
-      }
+      _run_flatpak "$flatpak_user" || _notify error "User Flatpak Update Failed" "flatpak --user exited with code $?"
     fi
   fi
 
@@ -215,10 +213,14 @@ _notify() {
   return 0
 }
 
+_run_flatpak_system() {
+  flatpak update --system --noninteractive
+}
+
 _run_flatpak() {
   local user="$1"
   if [ "$(id -un)" = "$user" ]; then
-    flatpak update --noninteractive
+    flatpak update --user --noninteractive
   elif command -v runuser >/dev/null 2>&1; then
     local uid home_dir bus_path xdg_data_dirs
     uid="$(id -u "$user" 2>/dev/null)" || return 1
@@ -231,12 +233,12 @@ _run_flatpak() {
         XDG_RUNTIME_DIR="/run/user/$uid" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
         XDG_DATA_DIRS="$xdg_data_dirs" \
-        flatpak update --noninteractive
+        flatpak update --user --noninteractive
     else
       runuser -u "$user" -- env \
         HOME="$home_dir" \
         XDG_DATA_DIRS="$xdg_data_dirs" \
-        flatpak update --noninteractive
+        flatpak update --user --noninteractive
     fi
   elif command -v sudo >/dev/null 2>&1; then
     local uid home_dir bus_path xdg_data_dirs
@@ -250,12 +252,12 @@ _run_flatpak() {
         XDG_RUNTIME_DIR="/run/user/$uid" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path" \
         XDG_DATA_DIRS="$xdg_data_dirs" \
-        flatpak update --noninteractive
+        flatpak update --user --noninteractive
     else
       sudo -u "$user" -- env \
         HOME="$home_dir" \
         XDG_DATA_DIRS="$xdg_data_dirs" \
-        flatpak update --noninteractive
+        flatpak update --user --noninteractive
     fi
   else
     echo "updatebtw: cannot run flatpak as user '$user' — neither runuser nor sudo available" >&2
