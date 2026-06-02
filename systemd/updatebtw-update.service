@@ -1,6 +1,6 @@
 [Unit]
 Description=updatebtw automatic system update
-Documentation=https://github.com/anomalyco/updatebtw
+Documentation=https://github.com/ChristianWSmith/updatebtw
 After=network-online.target
 Wants=network-online.target
 
