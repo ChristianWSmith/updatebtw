@@ -3,7 +3,6 @@ Description=Scheduled updatebtw update
 Documentation=https://github.com/ChristianWSmith/updatebtw
 
 [Timer]
-Persistent=true
 
 [Install]
 WantedBy=timers.target

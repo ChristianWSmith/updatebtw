@@ -32,6 +32,12 @@ _check_rate_limit() {
   return 0
 }
 
+_release_locks() {
+  [ -n "$_update_lock_fd" ] && flock -u "$_update_lock_fd" 2>/dev/null || true
+  flock -u 7 2>/dev/null || true
+  rm -f "$UPDATERBTW_STATE_DIR/updatebtw.lock" 2>/dev/null || true
+}
+
 update_packages() {
   trap '_notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' SIGTERM
   read_config
@@ -39,6 +45,8 @@ update_packages() {
   if ! _check_rate_limit; then
     return 1
   fi
+
+  trap '_release_locks; _notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' EXIT SIGTERM
 
   _cleanup_old_backups 2>/dev/null || true
   _cleanup_old_logs 2>/dev/null || true
@@ -114,9 +122,6 @@ update_packages() {
   _notify success "updatebtw" "Update complete"
   date "+%s" > "$UPDATERBTW_STATE_DIR/last_update"
   chmod 600 "$UPDATERBTW_STATE_DIR/last_update"
-  [ -n "$_update_lock_fd" ] && flock -u "$_update_lock_fd" 2>/dev/null || true
-  flock -u 7 2>/dev/null || true
-  rm -f "$pacman_lock" 2>/dev/null || true
 }
 
 _update_mirrorlist() {
