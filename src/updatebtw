@@ -221,6 +221,41 @@ case "${1:-help}" in
     echo "updatebtw has been uninstalled."
     echo "Backups in /var/lib/updatebtw/backups were left intact."
     ;;
+  tail)
+    if [ "$(id -u)" -ne 0 ]; then
+      echo "updatebtw: tail requires root. Use: sudo updatebtw tail" >&2
+      exit 1
+    fi
+    local log_dir="/var/log/updatebtw"
+    if [ ! -d "$log_dir" ] || [ -z "$(ls -A "$log_dir"/*.log 2>/dev/null)" ]; then
+      echo "updatebtw: no logs found" >&2
+      exit 1
+    fi
+    local latest_log
+    latest_log="$(ls -t "$log_dir"/*.log 2>/dev/null | head -1)"
+    if [ -z "$latest_log" ]; then
+      echo "updatebtw: no logs found" >&2
+      exit 1
+    fi
+    if systemctl is-active updatebtw-update.service >/dev/null 2>&1 || \
+       systemctl is-active updatebtw-boot.service >/dev/null 2>&1; then
+      tail -f -n +1 "$latest_log" &
+      local tail_pid=$!
+      while systemctl is-active updatebtw-update.service >/dev/null 2>&1 || \
+            systemctl is-active updatebtw-boot.service >/dev/null 2>&1; do
+        sleep 1
+      done
+      sleep 2
+      kill "$tail_pid" 2>/dev/null || true
+      wait "$tail_pid" 2>/dev/null || true
+      exit 0
+    else
+      cat "$latest_log"
+      echo ""
+      echo "No unattended update is currently running."
+      exit 0
+    fi
+    ;;
   help|--help|-h|*)
     cat << 'HELP'
 usage: updatebtw <command>
@@ -232,6 +267,7 @@ commands:
   off          Disable automatic updates
   reflector    Update mirrorlist via reflector now
   status       Show current configuration
+  tail         Follow the log of a running unattended update
   backup list  List available backups
   backup restore <path>  Restore a file from backup
   uninstall    Remove updatebtw (keeps backups)

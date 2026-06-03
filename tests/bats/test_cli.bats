@@ -198,3 +198,115 @@ SCRIPT
   [ "$status" -eq 0 ]
   grep "systemctl disable --now updatebtw-update.timer" /tmp/mock_log >/dev/null
 }
+
+@test "cli tail fails without root" {
+  export SUDO_USER=""
+  run su -c "$CLI tail" nobody
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"requires root"* ]]
+}
+
+@test "cli tail fails when no logs exist" {
+  rm -rf /var/log/updatebtw
+  run "$CLI" tail
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no logs found"* ]]
+}
+
+@test "cli tail fails when log dir exists but is empty" {
+  mkdir -p /var/log/updatebtw
+  rm -f /var/log/updatebtw/*.log
+  run "$CLI" tail
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no logs found"* ]]
+}
+
+@test "cli tail cats latest log when no update is running" {
+  mkdir -p /var/log/updatebtw
+  local test_log="/var/log/updatebtw/20250101_000000.log"
+  printf 'line one\nline two\nline three\n' > "$test_log"
+
+  cat > /tmp/systemctl << 'SCRIPT'
+#!/bin/sh
+exit 1
+SCRIPT
+  chmod +x /tmp/systemctl
+  export PATH="/tmp:$PATH"
+
+  run "$CLI" tail
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"line one"* ]]
+  [[ "$output" == *"line two"* ]]
+  [[ "$output" == *"line three"* ]]
+  [[ "$output" == *"No unattended update is currently running"* ]]
+
+  rm -f "$test_log"
+}
+
+@test "cli tail picks the most recent log file" {
+  mkdir -p /var/log/updatebtw
+  local old_log="/var/log/updatebtw/20250101_000000.log"
+  local new_log="/var/log/updatebtw/20250102_000000.log"
+  echo "old content" > "$old_log"
+  echo "new content" > "$new_log"
+
+  cat > /tmp/systemctl << 'SCRIPT'
+#!/bin/sh
+exit 1
+SCRIPT
+  chmod +x /tmp/systemctl
+  export PATH="/tmp:$PATH"
+
+  run "$CLI" tail
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"new content"* ]]
+  [[ "$output" != *"old content"* ]]
+
+  rm -f "$old_log" "$new_log"
+}
+
+@test "cli tail follows log while update is running" {
+  mkdir -p /var/log/updatebtw
+  local test_log="/var/log/updatebtw/20250101_000000.log"
+  echo "initial line" > "$test_log"
+  chmod 666 "$test_log"
+
+  cat > /tmp/systemctl << 'SCRIPT'
+#!/bin/sh
+echo "systemctl $*" >> /tmp/mock_log
+if [ "$1" = "is-active" ]; then
+  if [ -f /tmp/updatebtw-update-active ]; then
+    exit 0
+  fi
+  exit 1
+fi
+exit 0
+SCRIPT
+  chmod +x /tmp/systemctl
+  export PATH="/tmp:$PATH"
+  touch /tmp/mock_log && chmod 666 /tmp/mock_log
+  touch /tmp/updatebtw-update-active
+
+  # Run tail in background, it will follow and exit when we remove the flag
+  "$CLI" tail > /tmp/tail_output 2>&1 &
+  local tail_bg_pid=$!
+
+  # Let tail start and read initial content
+  sleep 1
+
+  # Append new content while "update is running"
+  echo "live update line" >> "$test_log"
+  sleep 1
+
+  # Simulate update completing
+  rm -f /tmp/updatebtw-update-active
+
+  # Wait for tail to finish (it polls every 1s + 2s drain)
+  wait "$tail_bg_pid" 2>/dev/null || true
+
+  [ -f /tmp/tail_output ]
+  grep "initial line" /tmp/tail_output >/dev/null
+  grep "live update line" /tmp/tail_output >/dev/null
+
+  rm -f "$test_log" /tmp/tail_output /tmp/updatebtw-update-active
+}
