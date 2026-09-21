@@ -8,6 +8,14 @@ _check_root() {
   fi
 }
 
+_check_distro() {
+  if ! command -v pacman >/dev/null 2>&1; then
+    echo "updatebtw requires a pacman-based Linux distribution (e.g., Arch Linux)." >&2
+    echo "pacman not found in PATH." >&2
+    exit 1
+  fi
+}
+
 _check_deps() {
   local missing=()
   ! command -v whiptail >/dev/null 2>&1 && missing+=("libnewt")
@@ -136,15 +144,19 @@ BUILDEOF
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build" "$build_script"; rm -rf "$private_tmp"' EXIT
 
   # PKGBUILD review prompt before building (H3)
-  if [ -t 0 ] && [ "${UPDATEBTW_AUTO_INSTALL_AUR:-}" != "1" ]; then
-    echo "==> AUR helper '$helper' will be built from the AUR."
-    echo "    Review the PKGBUILD before proceeding:"
-    echo "    https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
-    printf "    Continue? [Y/n] "
-    read -r _aur_answer
-    case "$_aur_answer" in
-      n|N) echo "Aborted."; return 1 ;;
-    esac
+  if [ -t 0 ]; then
+    if [ "${UPDATEBTW_AUTO_INSTALL_AUR:-}" = "1" ]; then
+      echo "==> WARNING: PKGBUILD review skipped (UPDATEBTW_AUTO_INSTALL_AUR=1)"
+    else
+      echo "==> AUR helper '$helper' will be built from the AUR."
+      echo "    Review the PKGBUILD before proceeding:"
+      echo "    https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=$helper"
+      printf "    Continue? [Y/n] "
+      read -r _aur_answer
+      case "$_aur_answer" in
+        n|N) echo "Aborted."; return 1 ;;
+      esac
+    fi
   fi
 
   if [ "$(id -un)" = "$user" ]; then
@@ -196,6 +208,7 @@ SUDOEOF
 
 tui_main() {
   _check_root
+  _check_distro
 
   local _non_interactive=false
   for arg in "$@"; do

@@ -37,8 +37,12 @@ backup_file() {
   fi
   grep -qxF "$src" "$tmp_manifest" 2>/dev/null || echo "$src" >> "$tmp_manifest"
   printf '%s\t%s\t%s\t%s\t%s\n' "$src" "$hash" "$perms" "$owner" "$group" >> "$tmp_hashes"
-  mv -f "$tmp_manifest" "$UPDATERBTW_BACKUP_MANIFEST"
-  mv -f "$tmp_hashes" "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
+  local manifest_lock="${UPDATERBTW_BACKUP_MANIFEST}.lock"
+  (
+    flock -w 5 9 || exit 1
+    mv -f "$tmp_manifest" "$UPDATERBTW_BACKUP_MANIFEST"
+    mv -f "$tmp_hashes" "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
+  ) 9>"$manifest_lock"
   chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
   chmod 600 "${UPDATERBTW_BACKUP_MANIFEST}.hashes" 2>/dev/null || true
 
@@ -111,6 +115,10 @@ list_backups() {
 
 _rotate_backups() {
   local name="$1"
+  # Validate name to prevent glob injection (same check as list_backups)
+  case "$name" in
+    *[!a-zA-Z0-9._-]*) return 0 ;;
+  esac
   local keep="${UPDATERBTW_BACKUP_KEEP:-10}"
   local files
   files="$(ls -1t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null || true)"

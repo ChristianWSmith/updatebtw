@@ -83,6 +83,7 @@ case "${1:-help}" in
       export UPDATERBTW_LOG_DIR UPDATERBTW_LOG_FILE
       umask 0077
       mkdir -p "$UPDATERBTW_LOG_DIR"
+      chmod 700 "$UPDATERBTW_LOG_DIR"
       # Verify log directory wasn't replaced with a symlink between mkdir and exec
       if [ -L "$UPDATERBTW_LOG_DIR" ]; then
         echo "updatebtw: log directory is a symlink, refusing" >&2
@@ -260,11 +261,13 @@ case "${1:-help}" in
        systemctl is-active updatebtw-boot.service >/dev/null 2>&1; then
       tail -f -n +1 "$latest_log" &
       tail_pid=$!
+      trap 'kill "$tail_pid" 2>/dev/null; wait "$tail_pid" 2>/dev/null' EXIT
       while systemctl is-active updatebtw-update.service >/dev/null 2>&1 || \
             systemctl is-active updatebtw-boot.service >/dev/null 2>&1; do
         sleep 1
       done
       sleep 2
+      trap - EXIT
       kill "$tail_pid" 2>/dev/null || true
       wait "$tail_pid" 2>/dev/null || true
       exit 0

@@ -81,7 +81,7 @@ _safe_read_config() {
     value="${line#*=}"
     # Remove leading/trailing double quotes if present
     case "$value" in
-      '"'*'"') value="$(printf '%s' "$value" | sed 's/^"//;s/"$//')" ;;
+      '"'*'"') value="${value#\"}"; value="${value%\"}" ;;
     esac
 
     # Strict character allowlist — no dangerous syntax can pass

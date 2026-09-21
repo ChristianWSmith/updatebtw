@@ -151,7 +151,11 @@ set_grub_silent() {
   mv -f "$tmpfile" "$grub_cfg"
 
   if command -v grub-mkconfig >/dev/null 2>&1; then
-    grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
+    if ! grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null; then
+      echo "ERROR: grub-mkconfig failed — restoring backup of $grub_cfg" >&2
+      restore_file "$grub_cfg" 2>/dev/null || true
+      return 1
+    fi
   fi
 
   rm -rf "$work_dir"

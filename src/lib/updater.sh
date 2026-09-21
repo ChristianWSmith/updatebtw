@@ -189,6 +189,9 @@ _notify() {
     # Resolve session UID directly, then convert to username once.
     # This reduces the TOCTOU window where a UID could be recycled
     # between session listing and username resolution.
+    # NOTE: On multi-user systems with multiple graphical sessions, this
+    # may target the wrong user. Configure SUDO_USER or FLATPAK_USER
+    # explicitly for reliable notification delivery.
     local session_uid=""
     session_uid="$(loginctl list-sessions --no-legend 2>/dev/null | while read -r sid uid rest; do
       local stype
@@ -307,7 +310,7 @@ _run_as_user() {
   # interpretation) via runuser -u / sudo -u.
   local user="$1"
   shift
-  if ! printf '%s' "$user" | grep -qE '^[a-zA-Z0-9_./:@,+=-]+$'; then
+  if ! printf '%s' "$user" | grep -qE '^[a-zA-Z0-9_./-]+$'; then
     echo "updatebtw: unsafe user: $user" >&2
     return 1
   fi
