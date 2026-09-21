@@ -22,8 +22,8 @@ SOURCES_HASH="PLACEHOLDER_HASH"
 
 _verify_integrity() {
   if ! command -v sha256sum >/dev/null 2>&1; then
-    echo "==> updatebtw: sha256sum not found, skipping integrity check" >&2
-    return 0
+    echo "==> updatebtw: sha256sum not found, cannot verify integrity" >&2
+    return 1
   fi
 
   local current_hash
