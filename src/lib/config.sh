@@ -7,9 +7,9 @@ FLATPAK_USER="${FLATPAK_USER:-${AUR_USER:-aur_builder}}"
 _allowed_config_keys="AUR_HELPER UPDATE_FREQUENCY UPDATE_TIME RUN_AT_BOOT ENABLE_REFLECTOR REFLECTOR_COUNTRY REFLECTOR_PROTOCOL REFLECTOR_INTERVAL SILENT_BOOT AUR_USER FLATPAK_USER BLACKLIST_MODULES"
 
 # Strict allowlist of characters permitted in config values.
-# Covers: alphanumerics, _, ., /, space, :, @, comma, +, -
-# Excludes: $ ` ; & | ( ) { } ! < > ' " [ ] \ ~ # % ^ * ?
-_safe_value_pattern='^[a-zA-Z0-9_./ :@,+.-]*$'
+# Covers: alphanumerics, _, ., comma, space, colon, -
+# Excludes: $ ` ; & | ( ) { } ! < > ' " [ ] \ ~ # % ^ * ? / @ +
+_safe_value_pattern='^[a-zA-Z0-9_., : -]*$'
 
 _safe_read_config() {
   # SECURITY (inherent — issue #9: config file trusted as root):

@@ -180,15 +180,30 @@ _notify() {
 
   local target_user="${SUDO_USER:-}"
   if [ -z "$target_user" ]; then
-    target_user="$(loginctl list-sessions --no-legend 2>/dev/null | while read -r sid uid rest; do
+    # Resolve session UID directly, then convert to username once.
+    # This reduces the TOCTOU window where a UID could be recycled
+    # between session listing and username resolution.
+    local session_uid=""
+    session_uid="$(loginctl list-sessions --no-legend 2>/dev/null | while read -r sid uid rest; do
       local stype
       stype="$(loginctl show-session "$sid" -p Type --value 2>/dev/null)"
       if [ "$stype" = "x11" ] || [ "$stype" = "wayland" ]; then
-        id -un "$uid" 2>/dev/null && break
+        printf '%s\n' "$uid"
+        break
       fi
     done)"
-    [ -z "$target_user" ] && target_user="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
-    [ -n "$target_user" ] && target_user="$(id -un "$target_user" 2>/dev/null)" || target_user=""
+    if [ -z "$session_uid" ]; then
+      session_uid="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $2}' | head -1)"
+    fi
+    # Validate UID is numeric and in human range before resolving to username
+    case "${session_uid:-}" in
+      ''|*[!0-9]*) session_uid="" ;;
+    esac
+    if [ -n "$session_uid" ] && [ "$session_uid" -ge 1000 ] && [ "$session_uid" -le 60000 ] 2>/dev/null; then
+      target_user="$(id -un "$session_uid" 2>/dev/null)" || target_user=""
+    else
+      target_user=""
+    fi
   fi
 
   if [ -n "$target_user" ]; then

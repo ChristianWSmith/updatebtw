@@ -70,7 +70,7 @@ case "${1:-help}" in
     ;;
   _update)
     case "${UPDATERBTW_INHIBIT:-}" in
-      [0-9]*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+      ^[0-9]+-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$)
         ;;
       *)
         echo "updatebtw: _update is an internal command. Use: sudo updatebtw update" >&2
@@ -83,6 +83,11 @@ case "${1:-help}" in
       export UPDATERBTW_LOG_DIR UPDATERBTW_LOG_FILE
       umask 0077
       mkdir -p "$UPDATERBTW_LOG_DIR"
+      # Verify log directory wasn't replaced with a symlink between mkdir and exec
+      if [ -L "$UPDATERBTW_LOG_DIR" ]; then
+        echo "updatebtw: log directory is a symlink, refusing" >&2
+        exit 1
+      fi
       exec >> "$UPDATERBTW_LOG_FILE" 2>&1
     fi
     . "$UPDATERBTW_ROOT/config.sh"
@@ -143,6 +148,14 @@ case "${1:-help}" in
           exit 1
         fi
         if [ -n "$3" ] && [ -f "$3" ]; then
+          # Reject relative paths and directory traversal
+          case "$3" in
+            /*) ;;
+            *) echo "updatebtw: backup restore requires an absolute path" >&2; exit 1 ;;
+          esac
+          case "$3" in
+            *..*) echo "updatebtw: path contains .. component" >&2; exit 1 ;;
+          esac
           restore_file "$3"
         else
           echo "Usage: updatebtw backup restore <path>" >&2

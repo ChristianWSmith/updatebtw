@@ -97,7 +97,8 @@ restore_file() {
 list_backups() {
   local name="${1:-}"
   if [ -n "$name" ]; then
-    # Validate name to prevent glob injection into find -name pattern
+    # Validate name to prevent glob injection into find -name pattern.
+    # The allowlist excludes find(1) glob metacharacters: * ? [ \
     case "$name" in
       *[!a-zA-Z0-9._-]*) return 1 ;;
     esac

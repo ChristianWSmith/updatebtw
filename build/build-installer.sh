@@ -95,14 +95,14 @@ main() {
     echo "    SILENT_BOOT=$SILENT_BOOT"
     echo ""
 
-    local missing=""
-    ! command -v whiptail >/dev/null 2>&1 && missing="$missing libnewt"
-    ! command -v git >/dev/null 2>&1 && missing="$missing git"
-    ! command -v sudo >/dev/null 2>&1 && missing="$missing sudo"
-    ! pacman -Qi base-devel >/dev/null 2>&1 && missing="$missing base-devel"
-    if [ -n "$missing" ]; then
-      echo "Installing missing dependencies:$missing"
-      pacman -S --needed --noconfirm $missing >/dev/null 2>&1 || true
+    local missing=()
+    ! command -v whiptail >/dev/null 2>&1 && missing+=("libnewt")
+    ! command -v git >/dev/null 2>&1 && missing+=("git")
+    ! command -v sudo >/dev/null 2>&1 && missing+=("sudo")
+    ! pacman -Qi base-devel >/dev/null 2>&1 && missing+=("base-devel")
+    if [ ${#missing[@]} -gt 0 ]; then
+      echo "Installing missing dependencies:${missing[*]}"
+      pacman -S --needed --noconfirm "${missing[@]}" >/dev/null 2>&1 || true
     fi
   else
     _check_deps
@@ -202,9 +202,15 @@ main() {
   fi
 
   echo "Installing AUR helper..."
-  _install_aur_helper "$AUR_HELPER" "$AUR_USER" || true
+  _install_aur_helper "$AUR_HELPER" "$AUR_USER" || {
+    echo "Failed to install AUR helper" >&2
+    exit 1
+  }
   echo "Configuring AUR user..."
-  _setup_aur_user "$AUR_USER" >/dev/null 2>&1 || true
+  _setup_aur_user "$AUR_USER" >/dev/null 2>&1 || {
+    echo "Failed to configure AUR user" >&2
+    exit 1
+  }
   echo "Writing configuration..."
   write_config
   if [ "$ENABLE_REFLECTOR" = "true" ] && ! command -v reflector >/dev/null 2>&1; then
@@ -238,22 +244,24 @@ _check_root() {
 }
 
 _check_deps() {
-  local missing=""
-  ! command -v whiptail >/dev/null 2>&1 && missing="$missing libnewt"
-  ! command -v git >/dev/null 2>&1 && missing="$missing git"
-  ! command -v sudo >/dev/null 2>&1 && missing="$missing sudo"
-  ! pacman -Qi base-devel >/dev/null 2>&1 && missing="$missing base-devel"
+  local missing=()
+  ! command -v whiptail >/dev/null 2>&1 && missing+=("libnewt")
+  ! command -v git >/dev/null 2>&1 && missing+=("git")
+  ! command -v sudo >/dev/null 2>&1 && missing+=("sudo")
+  ! pacman -Qi base-devel >/dev/null 2>&1 && missing+=("base-devel")
 
-  if [ -z "$missing" ]; then
+  if [ ${#missing[@]} -eq 0 ]; then
     return 0
   fi
 
+  local missing_str="${missing[*]}"
+
   if command -v whiptail >/dev/null 2>&1; then
     whiptail --title "Missing Dependencies" --yesno \
-      "The following packages are required:\n\n$missing\n\nInstall them now?" \
+      "The following packages are required:\n\n$missing_str\n\nInstall them now?" \
       12 50 || exit 1
   else
-    echo "Missing dependencies:$missing"
+    echo "Missing dependencies:$missing_str"
     printf "Install now? [Y/n] "
     read -r answer
     case "$answer" in
@@ -261,8 +269,7 @@ _check_deps() {
     esac
   fi
 
-  # shellcheck disable=SC2086
-  pacman -S --needed --noconfirm $missing
+  pacman -S --needed --noconfirm "${missing[@]}"
 }
 
 _install_aur_helper() {
@@ -281,7 +288,10 @@ _install_aur_helper() {
 
   if [ "$(id -un)" != "$user" ]; then
     if ! id "$user" >/dev/null 2>&1; then
-      useradd -m "$user" 2>/dev/null || true
+      if ! useradd -m "$user" 2>/dev/null; then
+        echo "Failed to create user $user" >&2
+        return 1
+      fi
     fi
     mkdir -p /etc/sudoers.d
     # SECURITY (inherent — issue #2: blanket pacman sudo):
@@ -335,8 +345,8 @@ HELPER_TMP="\$2"
 # TLS MITM attack could result in a malicious PKGBUILD being cloned and
 # built. The software has no mechanism for independent PKGBUILD verification
 # beyond the SHA256 printed after build for manual comparison.
-git clone --depth=1 "https://aur.archlinux.org/\$HELPER.git" "\$HELPER_TMP"
-cd "\$HELPER_TMP"
+git clone --depth=1 "https://aur.archlinux.org/\${HELPER}.git" "\${HELPER_TMP}"
+cd "\${HELPER_TMP}"
 
 # Install build dependencies as root before running makepkg
 # makepkg -makedepends requires sudo, which the aur user may not have
@@ -395,7 +405,10 @@ _setup_aur_user() {
   [ -n "$user" ] || return 1
 
   if ! id "$user" >/dev/null 2>&1; then
-    useradd -m "$user" 2>/dev/null || true
+    if ! useradd -m "$user" 2>/dev/null; then
+      echo "Failed to create user $user" >&2
+      return 1
+    fi
   fi
 
   rm -f "/etc/sudoers.d/updatebtw-$user-build" 2>/dev/null || true

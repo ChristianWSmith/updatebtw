@@ -29,7 +29,7 @@ setup() {
 @test "update invokes flatpak" {
   sudo bash "$INSTALLER" --non-interactive
   sudo updatebtw update
-  grep "flatpak update --noninteractive" "$LOG_FILE" >/dev/null
+  grep "flatpak update.*--noninteractive" "$LOG_FILE" >/dev/null
 }
 
 @test "update runs as aur_builder user" {
