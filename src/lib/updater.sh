@@ -307,5 +307,5 @@ _run_as_user() {
 _cleanup_old_logs() {
   local log_dir="${UPDATERBTW_LOG_DIR:-/var/log/updatebtw}"
   [ -d "$log_dir" ] || return 0
-  find "$log_dir" -type f -mtime +60 -delete 2>/dev/null || true
+  find "$log_dir" -maxdepth 1 -type f -name "*.log" -mtime +60 -delete 2>/dev/null || true
 }

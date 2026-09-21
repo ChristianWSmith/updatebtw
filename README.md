@@ -8,7 +8,7 @@ Not affiliated with or endorsed by the Arch Linux project.
 ```sh
 curl -sSfL -o /tmp/updatebtw-installer.sh \
   https://raw.githubusercontent.com/ChristianWSmith/updatebtw/main/installer.sh &&
-echo "dce31cb17b0e1458089e8dbd9c8344df00f18590c0c6e335296c8e1f5880161d  /tmp/updatebtw-installer.sh" | sha256sum -c - &&
+echo "07e1e3f4fa1f91189e0ad2afa1db51d3974d8da37e09f3cec9291563441d519c  /tmp/updatebtw-installer.sh" | sha256sum -c - &&
 sudo bash /tmp/updatebtw-installer.sh
 ```
 

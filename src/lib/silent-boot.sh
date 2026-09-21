@@ -294,5 +294,8 @@ silent_boot() {
   fi
 
   touch ~root/.hushlogin
-  touch ~"${SUDO_USER:-$(id -un)}"/.hushlogin 2>/dev/null || true
+  local _hush_user="${SUDO_USER:-$(id -un)}"
+  local _hush_home
+  _hush_home="$(getent passwd "$_hush_user" 2>/dev/null | cut -d: -f6)"
+  [ -n "$_hush_home" ] && touch "$_hush_home/.hushlogin" 2>/dev/null || true
 }

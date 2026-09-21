@@ -218,6 +218,8 @@ write_config() {
   chmod 600 "$tmp_cfg"
   chown root:root "$tmp_cfg" 2>/dev/null || true
   mv -f "$tmp_cfg" "$UPDATERBTW_CONFIG"
+  # Validate what was written (non-fatal — log warnings only)
+  validate_config 2>&1 | sed 's/^/updatebtw: warning: /' >&2 || true
 }
 
 validate_config() {

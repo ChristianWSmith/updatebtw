@@ -103,7 +103,7 @@ EOF
   export -f yay flatpak notify-send
 
   run "$CLI" update
-  grep "flatpak update --noninteractive" "$MOCK_LOG" >/dev/null
+  grep "flatpak update.*--noninteractive" "$MOCK_LOG" >/dev/null
 }
 
 @test "cli update wraps in systemd-inhibit" {
@@ -139,7 +139,7 @@ SUB
   [ "$status" -eq 0 ]
   grep "systemd-inhibit" /tmp/mock_log >/dev/null
   grep "yay -Syyuu --noconfirm" /tmp/mock_log >/dev/null
-  grep "flatpak update --noninteractive" /tmp/mock_log >/dev/null
+  grep "flatpak update.*--noninteractive" /tmp/mock_log >/dev/null
 }
 
 @test "cli backup list shows no backups initially" {
@@ -201,7 +201,9 @@ SCRIPT
 
 @test "cli tail fails without root" {
   export SUDO_USER=""
-  run su -c "$CLI tail" nobody
+  # Unset mock su so the real su is used to switch to a non-root user
+  unset -f su
+  run su -s /bin/bash test_user -c "$CLI tail"
   [ "$status" -eq 1 ]
   [[ "$output" == *"requires root"* ]]
 }
@@ -226,12 +228,9 @@ SCRIPT
   local test_log="/var/log/updatebtw/20250101_000000.log"
   printf 'line one\nline two\nline three\n' > "$test_log"
 
-  cat > /tmp/systemctl << 'SCRIPT'
-#!/bin/sh
-exit 1
-SCRIPT
-  chmod +x /tmp/systemctl
-  export PATH="/tmp:$PATH"
+  # Override mock systemctl to report service as inactive (exit 1)
+  systemctl() { return 1; }
+  export -f systemctl
 
   run "$CLI" tail
   [ "$status" -eq 0 ]
@@ -249,13 +248,13 @@ SCRIPT
   local new_log="/var/log/updatebtw/20250102_000000.log"
   echo "old content" > "$old_log"
   echo "new content" > "$new_log"
+  # Ensure different mtimes so ls -t can distinguish them
+  touch -t 202501010000 "$old_log"
+  touch -t 202501020000 "$new_log"
 
-  cat > /tmp/systemctl << 'SCRIPT'
-#!/bin/sh
-exit 1
-SCRIPT
-  chmod +x /tmp/systemctl
-  export PATH="/tmp:$PATH"
+  # Override mock systemctl to report service as inactive (exit 1)
+  systemctl() { return 1; }
+  export -f systemctl
 
   run "$CLI" tail
   [ "$status" -eq 0 ]
@@ -271,19 +270,18 @@ SCRIPT
   echo "initial line" > "$test_log"
   chmod 666 "$test_log"
 
-  cat > /tmp/systemctl << 'SCRIPT'
-#!/bin/sh
-echo "systemctl $*" >> /tmp/mock_log
-if [ "$1" = "is-active" ]; then
-  if [ -f /tmp/updatebtw-update-active ]; then
-    exit 0
-  fi
-  exit 1
-fi
-exit 0
-SCRIPT
-  chmod +x /tmp/systemctl
-  export PATH="/tmp:$PATH"
+  # Override mock systemctl to report active when flag file exists, inactive otherwise
+  systemctl() {
+    echo "systemctl $*" >> /tmp/mock_log
+    if [ "$1" = "is-active" ]; then
+      if [ -f /tmp/updatebtw-update-active ]; then
+        return 0
+      fi
+      return 1
+    fi
+    return 0
+  }
+  export -f systemctl
   touch /tmp/mock_log && chmod 666 /tmp/mock_log
   touch /tmp/updatebtw-update-active
 

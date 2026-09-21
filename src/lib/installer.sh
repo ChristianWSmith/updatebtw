@@ -142,8 +142,10 @@ BUILDEOF
 
   if [ "$(id -un)" = "$user" ]; then
     sh "$build_script" "$helper" "$helper_tmp"
+  elif command -v runuser >/dev/null 2>&1; then
+    runuser -u "$user" -- sh "$build_script" "$helper" "$helper_tmp"
   else
-    su - "$user" -s /bin/sh -- "$build_script" "$helper" "$helper_tmp"
+    su "$user" -s /bin/sh -- "$build_script" "$helper" "$helper_tmp"
   fi
 
   if [ -f "$helper_tmp/PKGBUILD" ]; then

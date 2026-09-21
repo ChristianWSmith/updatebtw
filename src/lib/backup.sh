@@ -97,6 +97,10 @@ restore_file() {
 list_backups() {
   local name="${1:-}"
   if [ -n "$name" ]; then
+    # Validate name to prevent glob injection into find -name pattern
+    case "$name" in
+      *[!a-zA-Z0-9._-]*) return 1 ;;
+    esac
     find "$UPDATERBTW_BACKUP_DIR" -maxdepth 1 -name "${name}.*" -printf '%f\n' 2>/dev/null | sort -r || true
   else
     find "$UPDATERBTW_BACKUP_DIR" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort -r || true
@@ -120,5 +124,7 @@ _rotate_backups() {
 
 _cleanup_old_backups() {
   [ -d "$UPDATERBTW_BACKUP_DIR" ] || return 0
-  find "$UPDATERBTW_BACKUP_DIR" -type f -mtime +60 -delete 2>/dev/null || true
+  find "$UPDATERBTW_BACKUP_DIR" -maxdepth 1 -type f \
+    ! -name ".manifest" ! -name ".manifest.hashes" \
+    -mtime +60 -delete 2>/dev/null || true
 }
