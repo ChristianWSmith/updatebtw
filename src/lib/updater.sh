@@ -18,7 +18,7 @@ _check_rate_limit() {
   fi
   _update_lock_fd=8
 
-  if [ -f "$state_file" ]; then
+  if [ -f "$state_file" ] && [ ! -L "$state_file" ]; then
     local last_update now delta
     last_update="$(cat "$state_file")"
     now="$(date "+%s")"
@@ -249,6 +249,10 @@ _run_flatpak_system() {
 
 _run_flatpak() {
   local user="$1"
+  if ! printf '%s' "$user" | grep -qE '^[a-zA-Z0-9_][a-zA-Z0-9_-]*$'; then
+    echo "updatebtw: unsafe flatpak user: $user" >&2
+    return 1
+  fi
   if [ "$(id -un)" = "$user" ]; then
     flatpak update --user --noninteractive
   elif command -v runuser >/dev/null 2>&1; then
@@ -310,7 +314,7 @@ _run_as_user() {
   # interpretation) via runuser -u / sudo -u.
   local user="$1"
   shift
-  if ! printf '%s' "$user" | grep -qE '^[a-zA-Z0-9_./-]+$'; then
+  if ! printf '%s' "$user" | grep -qE '^[a-zA-Z0-9_][a-zA-Z0-9_-]*$'; then
     echo "updatebtw: unsafe user: $user" >&2
     return 1
   fi

@@ -170,6 +170,10 @@ set_printk() {
     echo "updatebtw: sysctl.d directory is a symlink, refusing" >&2
     return 1
   fi
+  if [ -L "$dest" ]; then
+    echo "updatebtw: $dest is a symlink, refusing" >&2
+    return 1
+  fi
   backup_file "$dest" 2>/dev/null || true
   printf 'kernel.printk = 3 3 3 3\n' > "$dest"
 }

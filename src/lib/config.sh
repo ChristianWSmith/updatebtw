@@ -221,14 +221,20 @@ write_config() {
     printf 'FLATPAK_USER="%s"\n' "$s_flatpak_user"
   } > "$tmp_cfg"
   chmod 600 "$tmp_cfg"
-  chown root:root "$tmp_cfg" 2>/dev/null || true
+  chown root:root "$tmp_cfg" 2>/dev/null || echo "updatebtw: warning: chown failed for $tmp_cfg" >&2
+  # Validate before committing
+  local _val_out
+  _val_out="$( ( . "$tmp_cfg" && validate_config ) 2>&1 )" || {
+    printf 'updatebtw: warning: %s\n' "$_val_out" >&2
+    rm -f "$tmp_cfg"
+    return 1
+  }
+  [ -z "$_val_out" ] || printf 'updatebtw: warning: %s\n' "$_val_out" >&2
   mv -f "$tmp_cfg" "$UPDATERBTW_CONFIG"
-  # Validate what was written (non-fatal — log warnings only)
-  validate_config 2>&1 | sed 's/^/updatebtw: warning: /' >&2 || true
 }
 
 validate_config() {
-  local errors=""
+  local errors="" warnings=""
   case "${AUR_HELPER:-yay}" in
     yay|paru) ;;
     *) errors="${errors}error: AUR_HELPER must be 'yay' or 'paru' (got: ${AUR_HELPER})\n" ;;
@@ -237,7 +243,9 @@ validate_config() {
     daily|weekly|monthly) ;;
     *) errors="${errors}error: UPDATE_FREQUENCY must be 'daily', 'weekly', or 'monthly' (got: ${UPDATE_FREQUENCY})\n" ;;
   esac
-  if [ -n "${UPDATE_TIME:-}" ] && ! printf '%s' "${UPDATE_TIME}" | grep -qE '^[0-2][0-9]:[0-5][0-9]$'; then
+  if [ -z "${UPDATE_TIME:-}" ]; then
+    errors="${errors}error: UPDATE_TIME must not be empty\n"
+  elif ! printf '%s' "${UPDATE_TIME}" | grep -qE '^[0-2][0-9]:[0-5][0-9]$'; then
     errors="${errors}error: UPDATE_TIME must be HH:MM format (got: ${UPDATE_TIME})\n"
   fi
   case "${RUN_AT_BOOT:-false}" in
@@ -274,13 +282,16 @@ validate_config() {
       case "$aur_shell" in
         */nologin|*/false) ;;
         *)
-          errors="${errors}error: AUR_USER '$AUR_USER' appears to be a login user (UID $aur_uid). Use a dedicated system account.\n"
+          warnings="${warnings}warning: AUR_USER '$AUR_USER' appears to be a login user (UID $aur_uid). Use a dedicated system account.\n"
           ;;
       esac
     fi
   fi
   if [ -n "${FLATPAK_USER:-}" ] && ! printf '%s' "${FLATPAK_USER}" | grep -qE '^[a-z_][a-z0-9_-]*$'; then
     errors="${errors}error: FLATPAK_USER contains invalid characters (got: ${FLATPAK_USER})\n"
+  fi
+  if [ -n "$warnings" ]; then
+    printf '%b' "$warnings" >&2
   fi
   if [ -n "$errors" ]; then
     printf '%b' "$errors" >&2

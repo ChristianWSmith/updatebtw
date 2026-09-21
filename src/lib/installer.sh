@@ -84,7 +84,7 @@ SUDOEOF
   trap 'rm -f "/etc/sudoers.d/updatebtw-$user-build"' EXIT
 
   local private_tmp
-  find /tmp -maxdepth 1 -name "updatebtw-${helper}.*" \( -type d -o -type l \) -exec rm -rf {} + 2>/dev/null || true
+  find /tmp -maxdepth 1 -name "updatebtw-${helper}.*" -type d -exec rm -rf {} + 2>/dev/null || true
   private_tmp="$(mktemp -d "/tmp/updatebtw-$helper.XXXXXX")"
   chmod 700 "$private_tmp"
   chown "$user:$user" "$private_tmp"

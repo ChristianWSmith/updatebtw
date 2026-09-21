@@ -18,7 +18,7 @@ backup_file() {
   local backup_path="$UPDATERBTW_BACKUP_DIR/${name}.${ts}.${rand}"
   cp -a "$src" "$backup_path"
   chmod 600 "$backup_path"
-  chown root:root "$backup_path" 2>/dev/null || true
+  chown root:root "$backup_path" 2>/dev/null || echo "updatebtw: warning: chown failed for $backup_path" >&2
 
   mkdir -p "$(dirname "$UPDATERBTW_BACKUP_MANIFEST")"
   local hash perms owner group
@@ -26,22 +26,11 @@ backup_file() {
   perms="$(stat -c '%a' "$src")"
   owner="$(stat -c '%u' "$src")"
   group="$(stat -c '%g' "$src")"
-  local tmp_manifest tmp_hashes
-  tmp_manifest="$(mktemp "${UPDATERBTW_BACKUP_MANIFEST}.XXXXXX")"
-  tmp_hashes="$(mktemp "${UPDATERBTW_BACKUP_MANIFEST}.hashes.XXXXXX")"
-  if [ -f "$UPDATERBTW_BACKUP_MANIFEST" ]; then
-    cp "$UPDATERBTW_BACKUP_MANIFEST" "$tmp_manifest"
-  fi
-  if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
-    cp "${UPDATERBTW_BACKUP_MANIFEST}.hashes" "$tmp_hashes"
-  fi
-  grep -qxF "$src" "$tmp_manifest" 2>/dev/null || echo "$src" >> "$tmp_manifest"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$src" "$hash" "$perms" "$owner" "$group" >> "$tmp_hashes"
   local manifest_lock="${UPDATERBTW_BACKUP_MANIFEST}.lock"
   (
     flock -w 5 9 || exit 1
-    mv -f "$tmp_manifest" "$UPDATERBTW_BACKUP_MANIFEST"
-    mv -f "$tmp_hashes" "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
+    grep -qxF "$src" "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || echo "$src" >> "$UPDATERBTW_BACKUP_MANIFEST"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$src" "$hash" "$perms" "$owner" "$group" >> "${UPDATERBTW_BACKUP_MANIFEST}.hashes"
   ) 9>"$manifest_lock"
   chmod 600 "$UPDATERBTW_BACKUP_MANIFEST" 2>/dev/null || true
   chmod 600 "${UPDATERBTW_BACKUP_MANIFEST}.hashes" 2>/dev/null || true

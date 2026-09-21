@@ -69,26 +69,22 @@ case "${1:-help}" in
     update_packages
     ;;
   _update)
-    case "${UPDATERBTW_INHIBIT:-}" in
-      ^[0-9]+-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$)
-        ;;
-      *)
-        echo "updatebtw: _update is an internal command. Use: sudo updatebtw update" >&2
-        exit 1
-        ;;
-    esac
+    if ! [[ "${UPDATERBTW_INHIBIT:-}" =~ ^[0-9]+-[0-9a-f]{32}$ ]]; then
+      echo "updatebtw: _update is an internal command. Use: sudo updatebtw update" >&2
+      exit 1
+    fi
     if [ -n "$SYSTEMD_INHIBIT" ]; then
       UPDATERBTW_LOG_DIR="/var/log/updatebtw"
-      UPDATERBTW_LOG_FILE="$UPDATERBTW_LOG_DIR/$(date +%Y%m%d_%H%M%S).log"
-      export UPDATERBTW_LOG_DIR UPDATERBTW_LOG_FILE
+      export UPDATERBTW_LOG_DIR
       umask 0077
       mkdir -p "$UPDATERBTW_LOG_DIR"
       chmod 700 "$UPDATERBTW_LOG_DIR"
-      # Verify log directory wasn't replaced with a symlink between mkdir and exec
       if [ -L "$UPDATERBTW_LOG_DIR" ]; then
         echo "updatebtw: log directory is a symlink, refusing" >&2
         exit 1
       fi
+      UPDATERBTW_LOG_FILE="$(mktemp "$UPDATERBTW_LOG_DIR/update.XXXXXX.log")"
+      export UPDATERBTW_LOG_FILE
       exec >> "$UPDATERBTW_LOG_FILE" 2>&1
     fi
     . "$UPDATERBTW_ROOT/config.sh"
@@ -210,12 +206,17 @@ case "${1:-help}" in
 
     echo "Removing binaries and libraries..."
     rm -f /usr/bin/updatebtw /usr/local/bin/updatebtw
+    for _p in /usr/lib/updatebtw /usr/local/lib/updatebtw; do
+      [ -L "$_p" ] && echo "updatebtw: $_p is a symlink, refusing to remove" >&2 && exit 1
+    done
     rm -rf /usr/lib/updatebtw /usr/local/lib/updatebtw
 
     echo "Removing configuration..."
+    [ -L /etc/updatebtw ] && echo "updatebtw: /etc/updatebtw is a symlink, refusing to remove" >&2 && exit 1
     rm -rf /etc/updatebtw
 
     echo "Removing state files..."
+    [ -L /var/lib/updatebtw/state ] && echo "updatebtw: /var/lib/updatebtw/state is a symlink, refusing to remove" >&2 && exit 1
     rm -rf /var/lib/updatebtw/state
 
     echo "Removing sudoers rules..."
