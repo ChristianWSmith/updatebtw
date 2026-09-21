@@ -57,6 +57,10 @@ Read every source file. For each file, check for:
 - Validation after commit instead of before
 - Silent failure masking real errors
 
+#### Early Exit
+
+If no vulnerabilities are found after scanning all files, report that the codebase is clean and stop. Do not fabricate findings or pad the report with low-value nitpicks. A clean audit is a good audit.
+
 ### Phase 3: Severity Classification
 
 Classify each finding:
@@ -76,6 +80,25 @@ Classify each finding:
 3. For each fix, note which tests might break and why
 4. Apply fixes, then run lint and tests
 5. Fix any test breakage that is legitimate (test was testing wrong behavior)
+
+### Phase 5: Tests
+
+If a fix changes observable behavior (new error messages, new validation, changed control flow), add or update tests to cover the new behavior:
+
+- **Unit tests** (`tests/bats/`): Add tests for new validation rules, error paths, and edge cases. Test both the happy path and the rejection case.
+- **Integration tests** (`tests/integration/`): Add integration tests if the fix affects install, uninstall, update, or reconfigure flows.
+- Don't add tests for purely internal changes (e.g., reordering operations) unless the change affects external behavior.
+
+### Phase 6: Commit & Push
+
+Once all fixes are applied, tests pass, and the build is clean:
+
+1. `make lint` — no warnings
+2. `make test` — all unit tests pass
+3. `make integration` — all integration tests pass
+4. `make` — build succeeds
+5. Commit with a descriptive message covering what was fixed and why
+6. Push to the remote
 
 ## Common Patterns to Watch For
 
@@ -146,16 +169,14 @@ A regex allowlist on input is good but not sufficient. Check if the value is als
 - Passed through `printf '%s'` rather than bare expansion
 - Used in contexts where word splitting could occur
 
-## Verification Checklist
+## What NOT to Report
 
-After applying fixes:
-
-1. `make lint` — no new shellcheck warnings
-2. `make test` — all unit tests pass
-3. `make integration` — all integration tests pass (if project has integration tests)
-4. `make` — build succeeds (if project has a build step)
-5. Manual review of diff to ensure no accidental regressions
-6. Verify the fix actually addresses the vulnerability (not just a cosmetic change)
+Skip issues that are fundamental to the program's function:
+- "This program runs as root" (if it must for its purpose)
+- "AUR packages are untrusted" (inherent to AUR helper design)
+- "This program modifies system files" (that's its job)
+- "Package manager has root access" (required for system updates)
+- Self-signed integrity checks (inherent to self-distributed tools)
 
 ## Updating This Skill
 
@@ -165,12 +186,3 @@ When performing a security audit, you may discover new vulnerability patterns, a
 2. If the new pattern changes the audit workflow, update the relevant phase.
 3. If the fix required a non-obvious test change, add it as an example in the verification section.
 4. Keep the skill concise — prefer a one-liner and code example over a paragraph of explanation.
-
-## What NOT to Report
-
-Skip issues that are fundamental to the program's function:
-- "This program runs as root" (if it must for its purpose)
-- "AUR packages are untrusted" (inherent to AUR helper design)
-- "This program modifies system files" (that's its job)
-- "Package manager has root access" (required for system updates)
-- Self-signed integrity checks (inherent to self-distributed tools)
