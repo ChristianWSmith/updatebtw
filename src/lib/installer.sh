@@ -124,7 +124,10 @@ cd "\${HELPER_TMP}"
 # Mitigation: sudo is scoped to /usr/bin/pacman only (see issue #2).
 _deps="\$(makepkg --printsrcinfo 2>/dev/null | sed -n 's/^\tmakedepends = //p' | tr '\n' ' ')"
 if [ -n "\$_deps" ]; then
-  sudo pacman -S --needed --noconfirm \$_deps 2>/dev/null || true
+  case "\$_deps" in
+    *[!a-zA-Z0-9_@./+-]*) echo "Warning: suspicious dependency names, skipping" >&2 ;;
+    *) sudo pacman -S --needed --noconfirm \$_deps 2>/dev/null || true ;;
+  esac
 fi
 
 makepkg --noconfirm
@@ -225,7 +228,7 @@ tui_main() {
       echo "Installing missing dependencies:${missing[*]}"
       pacman -S --needed --noconfirm "${missing[@]}" >/dev/null 2>&1 || true
     fi
-  fi
+  else
 
     whiptail --title "updatebtw" --msgbox \
       "Welcome to updatebtw — the automatic Arch Linux update utility.\n\nNOTE: This project is NOT affiliated with or endorsed by Arch Linux.\nIt is an unofficial third-party tool.\n\nThis installer will configure automatic system updates on your system." \

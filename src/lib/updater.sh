@@ -155,6 +155,12 @@ _update_mirrorlist() {
     _notify error "Reflector Failed" "Mirrorlist update failed"
     return 1
   fi
+  # Sanity-check: must contain at least one mirror
+  if ! grep -q '^Server =' "$mirrorlist" 2>/dev/null; then
+    _notify error "Reflector Failed" "Reflector produced empty or invalid mirrorlist"
+    restore_file "$mirrorlist" 2>/dev/null || true
+    return 1
+  fi
 }
 
 _notify() {
@@ -301,6 +307,10 @@ _run_as_user() {
   # interpretation) via runuser -u / sudo -u.
   local user="$1"
   shift
+  if ! printf '%s' "$user" | grep -qE '^[a-zA-Z0-9_./:@,+=-]+$'; then
+    echo "updatebtw: unsafe user: $user" >&2
+    return 1
+  fi
   for arg in "$@"; do
     if ! printf '%s' "$arg" | grep -qE '^[a-zA-Z0-9_./:@,+=-]+$'; then
       echo "updatebtw: unsafe argument detected: $arg" >&2

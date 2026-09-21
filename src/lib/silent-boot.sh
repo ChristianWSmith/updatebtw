@@ -162,6 +162,10 @@ set_printk() {
   local dest_dir
   dest_dir="$(dirname "$dest")"
   mkdir -p "$dest_dir"
+  if [ -L "$dest_dir" ]; then
+    echo "updatebtw: sysctl.d directory is a symlink, refusing" >&2
+    return 1
+  fi
   backup_file "$dest" 2>/dev/null || true
   printf 'kernel.printk = 3 3 3 3\n' > "$dest"
 }

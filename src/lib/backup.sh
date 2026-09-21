@@ -61,6 +61,7 @@ restore_file() {
   latest="$(ls -t "$UPDATERBTW_BACKUP_DIR/${name}."* 2>/dev/null | head -1)"
   [ -n "$latest" ] || return 1
 
+  # Verify integrity immediately before restore (close TOCTOU)
   if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then
     local expected_hash
     expected_hash="$(awk -F'\t' -v src="$src" '$1 == src {print $2}' "${UPDATERBTW_BACKUP_MANIFEST}.hashes" | tail -1)"
