@@ -46,7 +46,8 @@ update_packages() {
     return 1
   fi
 
-  trap '_release_locks; _notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' EXIT SIGTERM
+  trap '_release_locks' EXIT
+  trap '_release_locks; _notify critical "updatebtw" "Shutdown blocked — system update in progress, please wait"' SIGTERM
 
   _cleanup_old_backups 2>/dev/null || true
   _cleanup_old_logs 2>/dev/null || true

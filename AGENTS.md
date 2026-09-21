@@ -5,14 +5,14 @@ Arch Linux automatic update utility. Pure shell project — no compiled code.
 ## Build & Verify
 
 ```sh
-make              # rebuild installer.sh from source modules
+make              # rebuild installer.sh and README.md from source modules
 make lint         # shellcheck on src/updatebtw, src/lib/*.sh, build/build-installer.sh
 make test         # BATS unit tests in Docker (archlinux:base-devel image)
 make integration  # integration tests in Docker
-make clean        # removes generated installer.sh
+make clean        # removes generated installer.sh and README.md
 ```
 
-`make` is the only build step. `installer.sh` is generated, not hand-edited.
+`make` is the only build step. `installer.sh` and `README.md` are generated, not hand-edited. Edit `templates/README.md.in`, never `README.md` directly.
 
 ## Architecture
 
@@ -38,6 +38,8 @@ make clean        # removes generated installer.sh
 
 `build/build-installer.sh` concatenates a header (installer logic) with all lib modules, then base64-encodes each source file into `install_*` payload functions. The integrity hash (`SOURCES_HASH`) is computed over everything before the `#__END_OF_PAYLOADS__` delimiter, excluding the hash itself. Changing any source file changes the hash. Never edit `installer.sh` directly.
 
+`README.md` is generated from `templates/README.md.in` by replacing `__INSTALLER_SHA256__` with the sha256sum of the built `installer.sh`. This embeds the checksum directly in the install instructions so users verify against what GitHub displays.
+
 ## Testing
 
 Tests use BATS inside Docker (`archlinux:base-devel` with `bats`, `sudo`, `procps-ng`). The Dockerfile creates test users (`builder`, `aur_builder`, `test_user`) and mock directories (`/var/lib/pacman`, `/etc/pacman.d`, `/boot/loader/entries`).
@@ -62,6 +64,6 @@ Test files: `test_cli.bats`, `test_config.bats`, `test_backup.bats`, `test_updat
 - No external dependencies beyond core Arch Linux packages (whiptail, git, sudo, base-devel).
 - Config values are set directly from parsed lines — never sourced from the config file.
 - Security-critical patterns: fd-based file opens (no TOCTOU), symlink rejection, strict character allowlists, atomic file writes via temp+mv.
-- `installer.sh` is a generated artifact. Edit sources in `src/`, rebuild with `make`, never edit `installer.sh` directly.
+- `installer.sh` and `README.md` are generated artifacts. Edit sources in `src/` and `templates/README.md.in`, rebuild with `make`, never edit them directly.
 - `UPDATEBTW_AUTO_INSTALL_AUR=1` skips the PKGBUILD review prompt during AUR helper install.
 - `_run_as_user` argument validation: only `[a-zA-Z0-9_./:@,+=-]` allowed — no shell metacharacters pass through.
