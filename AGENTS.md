@@ -67,3 +67,15 @@ Test files: `test_cli.bats`, `test_config.bats`, `test_backup.bats`, `test_updat
 - `installer.sh` and `README.md` are generated artifacts. Edit sources in `src/` and `templates/README.md.in`, rebuild with `make`, never edit them directly.
 - `UPDATEBTW_AUTO_INSTALL_AUR=1` skips the PKGBUILD review prompt during AUR helper install.
 - `_run_as_user` argument validation: only `[a-zA-Z0-9_./:@,+=-]` allowed — no shell metacharacters pass through.
+
+## Security Audit Skill
+
+The project includes a security audit skill at `.opencode/skills/security-audit/SKILL.md`. It documents the methodology, common shell vulnerability patterns, and verification steps used in this project.
+
+When performing a security audit and you discover a new vulnerability pattern, anti-pattern, or shell-specific gotcha not yet documented in the skill:
+
+1. Add the new pattern to the skill's "Common Patterns to Watch For" with a BAD/GOOD code example.
+2. If the fix required an unexpected test change, note it in the skill's verification section.
+3. Keep entries concise — one-liner plus code example, not a paragraph.
+
+This ensures the skill grows with the project and each audit benefits from prior findings.

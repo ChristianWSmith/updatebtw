@@ -152,9 +152,19 @@ After applying fixes:
 
 1. `make lint` — no new shellcheck warnings
 2. `make test` — all unit tests pass
-3. `make` — build succeeds (if project has a build step)
-4. Manual review of diff to ensure no accidental regressions
-5. Verify the fix actually addresses the vulnerability (not just a cosmetic change)
+3. `make integration` — all integration tests pass (if project has integration tests)
+4. `make` — build succeeds (if project has a build step)
+5. Manual review of diff to ensure no accidental regressions
+6. Verify the fix actually addresses the vulnerability (not just a cosmetic change)
+
+## Updating This Skill
+
+When performing a security audit, you may discover new vulnerability patterns, anti-patterns, or shell-specific gotchas not yet documented here. When that happens:
+
+1. Add the new pattern to "Common Patterns to Watch For" with a BAD/GOOD code example.
+2. If the new pattern changes the audit workflow, update the relevant phase.
+3. If the fix required a non-obvious test change, add it as an example in the verification section.
+4. Keep the skill concise — prefer a one-liner and code example over a paragraph of explanation.
 
 ## What NOT to Report
 
