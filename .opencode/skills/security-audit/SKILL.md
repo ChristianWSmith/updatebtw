@@ -178,6 +178,9 @@ Skip issues that are fundamental to the program's function:
 - "Package manager has root access" (required for system updates)
 - Self-signed integrity checks (inherent to self-distributed tools)
 
+Skip test infrastructure entirely:
+- Test helpers (`tests/helpers/`), mock scripts, test Dockerfiles, and BATS test files are not part of the deployed codebase. Predictable temp files, relaxed validation, and `eval` in mock functions are acceptable in test code — they don't ship to users.
+
 ## Updating This Skill
 
 When performing a security audit, you may discover new vulnerability patterns, anti-patterns, or shell-specific gotchas not yet documented here. When that happens:
