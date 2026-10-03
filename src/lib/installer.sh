@@ -183,6 +183,13 @@ BUILDEOF
 _setup_aur_user() {
   local user="$1"
   [ -n "$user" ] || return 1
+  # SECURITY: validate username before interpolating into sudoers file and
+  # filesystem paths. Without this, a caller that skips _install_aur_helper's
+  # validation could inject sudoers directives via the username.
+  if ! printf '%s' "$user" | grep -qE '^[a-z_][a-z0-9_-]*\$?$'; then
+    echo "Invalid username: $user" >&2
+    return 1
+  fi
 
   if ! id "$user" >/dev/null 2>&1; then
     if ! useradd -m "$user" 2>/dev/null; then

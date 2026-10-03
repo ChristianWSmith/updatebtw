@@ -68,6 +68,13 @@ restore_file() {
     fi
   fi
 
+  # SECURITY: refuse to restore through a symlink at the destination.
+  # cp -a follows a final-component symlink and would overwrite the target.
+  if [ -L "$src" ]; then
+    echo "updatebtw: $src is a symlink, refusing restore" >&2
+    return 1
+  fi
+
   cp -a "$latest" "$src"
 
   if [ -f "${UPDATERBTW_BACKUP_MANIFEST}.hashes" ]; then

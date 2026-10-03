@@ -147,6 +147,35 @@ read_config() {
   _safe_read_config "$UPDATERBTW_CONFIG"
 }
 
+# Validate a single config key/value pair using the same rules as
+# _safe_read_config. Called by write_config BEFORE any bytes are written
+# so that sourcing the temp file during post-write validation can never
+# execute command substitutions embedded in values.
+_validate_config_value() {
+  local key="$1" value="$2"
+  case "$key" in
+    AUR_HELPER)
+      case "$value" in yay|paru) ;; *) return 1 ;; esac ;;
+    UPDATE_FREQUENCY)
+      case "$value" in daily|weekly|monthly) ;; *) return 1 ;; esac ;;
+    RUN_AT_BOOT|ENABLE_REFLECTOR|SILENT_BOOT)
+      case "$value" in true|false) ;; *) return 1 ;; esac ;;
+    UPDATE_TIME)
+      printf '%s' "$value" | grep -qE '^[0-2][0-9]:[0-5][0-9]$' || return 1 ;;
+    REFLECTOR_INTERVAL)
+      printf '%s' "$value" | grep -qE '^[0-9]+$' || return 1 ;;
+    REFLECTOR_COUNTRY)
+      printf '%s' "$value" | grep -qE '^[a-zA-Z0-9 .,-]+$' || return 1 ;;
+    REFLECTOR_PROTOCOL)
+      case "$value" in https|http|rsync) ;; *) return 1 ;; esac ;;
+    BLACKLIST_MODULES)
+      printf '%s' "$value" | grep -qE '^[a-zA-Z0-9_,]+$' || return 1 ;;
+    AUR_USER|FLATPAK_USER)
+      printf '%s' "$value" | grep -qE '^[a-z_][a-z0-9_-]*$' || return 1 ;;
+  esac
+  return 0
+}
+
 write_config() {
   local config_dir
   config_dir="$(dirname "$UPDATERBTW_CONFIG")"
@@ -193,6 +222,35 @@ write_config() {
   s_flatpak_user="${s_flatpak_user//\"/}"
   s_flatpak_user="${s_flatpak_user//$'\n'/}"
 
+  # SECURITY: validate every value against the same per-key rules used by
+  # _safe_read_config BEFORE writing anything to disk. This ensures the
+  # temp file can never contain values that would execute code when the
+  # file is later sourced (e.g. $(...) or backticks in values).
+  local _vkey _vval
+  for _vkey in AUR_HELPER UPDATE_FREQUENCY UPDATE_TIME RUN_AT_BOOT \
+               ENABLE_REFLECTOR REFLECTOR_COUNTRY REFLECTOR_PROTOCOL \
+               REFLECTOR_INTERVAL SILENT_BOOT BLACKLIST_MODULES \
+               AUR_USER FLATPAK_USER; do
+    case "$_vkey" in
+      AUR_HELPER)         _vval="$s_aur_helper" ;;
+      UPDATE_FREQUENCY)   _vval="$s_freq" ;;
+      UPDATE_TIME)        _vval="$s_time" ;;
+      RUN_AT_BOOT)        _vval="$s_boot" ;;
+      ENABLE_REFLECTOR)   _vval="$s_reflector" ;;
+      REFLECTOR_COUNTRY)  _vval="$s_country" ;;
+      REFLECTOR_PROTOCOL) _vval="$s_protocol" ;;
+      REFLECTOR_INTERVAL) _vval="$s_interval" ;;
+      SILENT_BOOT)        _vval="$s_silent" ;;
+      BLACKLIST_MODULES)  _vval="$s_modules" ;;
+      AUR_USER)           _vval="$s_aur_user" ;;
+      FLATPAK_USER)       _vval="$s_flatpak_user" ;;
+    esac
+    if ! _validate_config_value "$_vkey" "$_vval"; then
+      echo "updatebtw: invalid value for $_vkey: $_vval" >&2
+      return 1
+    fi
+  done
+
   # Write to temp file, set permissions, then mv atomically into place.
   # This eliminates the TOCTOU window where the file exists with default
   # umask before chmod/chown are applied.
@@ -221,9 +279,19 @@ write_config() {
     printf 'FLATPAK_USER="%s"\n' "$s_flatpak_user"
   } > "$tmp_cfg"
   chmod 600 "$tmp_cfg"
-  chown root:root "$tmp_cfg" 2>/dev/null || echo "updatebtw: warning: chown failed for $tmp_cfg" >&2
-  # Validate before committing
+  if [ "$(id -u)" -eq 0 ]; then
+    chown root:root "$tmp_cfg" || {
+      echo "updatebtw: chown failed for $tmp_cfg" >&2
+      rm -f "$tmp_cfg"
+      return 1
+    }
+  else
+    chown root:root "$tmp_cfg" 2>/dev/null || echo "updatebtw: warning: chown failed for $tmp_cfg" >&2
+  fi
+  # Belt-and-suspenders: validate the written file too. Values were already
+  # validated above, so sourcing cannot execute injected code.
   local _val_out
+  # shellcheck disable=SC1090
   _val_out="$( ( . "$tmp_cfg" && validate_config ) 2>&1 )" || {
     printf 'updatebtw: warning: %s\n' "$_val_out" >&2
     rm -f "$tmp_cfg"
@@ -260,6 +328,9 @@ validate_config() {
     https|http|rsync) ;;
     *) errors="${errors}error: REFLECTOR_PROTOCOL must be 'https', 'http', or 'rsync' (got: ${REFLECTOR_PROTOCOL})\n" ;;
   esac
+  if [ -n "${REFLECTOR_COUNTRY:-}" ] && ! printf '%s' "${REFLECTOR_COUNTRY}" | grep -qE '^[a-zA-Z0-9 .,-]+$'; then
+    errors="${errors}error: REFLECTOR_COUNTRY contains invalid characters (got: ${REFLECTOR_COUNTRY})\n"
+  fi
   if [ -n "${REFLECTOR_INTERVAL:-}" ] && ! printf '%s' "${REFLECTOR_INTERVAL}" | grep -qE '^[0-9]+$'; then
     errors="${errors}error: REFLECTOR_INTERVAL must be a number (got: ${REFLECTOR_INTERVAL})\n"
   fi
