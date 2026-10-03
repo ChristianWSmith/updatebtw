@@ -44,6 +44,28 @@ teardown() {
   [ "$status" -eq 1 ]
 }
 
+@test "restore_file refuses symlink destination" {
+  local testfile="$(mktemp /tmp/updatebtw-symdest.XXXXXX)"
+  local target="$(mktemp /tmp/updatebtw-symtarget.XXXXXX)"
+  echo "original" > "$testfile"
+  echo "target-content" > "$target"
+
+  backup_file "$testfile"
+  echo "modified" > "$testfile"
+
+  # Replace destination with a symlink to $target
+  rm -f "$testfile"
+  ln -s "$target" "$testfile"
+
+  run restore_file "$testfile"
+  [ "$status" -eq 1 ]
+
+  # Target must not have been overwritten
+  [ "$(cat "$target")" = "target-content" ]
+
+  rm -f "$testfile" "$target"
+}
+
 @test "list_backups lists files" {
   local testfile="$(mktemp /tmp/updatebtw-list.XXXXXX)"
   echo "content" > "$testfile"

@@ -21,11 +21,17 @@ _check_rate_limit() {
   if [ -f "$state_file" ] && [ ! -L "$state_file" ]; then
     local last_update now delta
     last_update="$(cat "$state_file")"
+    # Validate numeric to prevent arithmetic errors on corrupted state
+    case "$last_update" in
+      ''|*[!0-9]*) last_update="" ;;
+    esac
     now="$(date "+%s")"
-    delta=$(( now - last_update ))
-    if [ "$delta" -lt "$UPDATERBTW_MIN_UPDATE_INTERVAL" ]; then
-      _notify error "Update Throttled" "Last update was $(( delta ))s ago, minimum interval is ${UPDATERBTW_MIN_UPDATE_INTERVAL}s"
-      return 1
+    if [ -n "$last_update" ]; then
+      delta=$(( now - last_update ))
+      if [ "$delta" -lt "$UPDATERBTW_MIN_UPDATE_INTERVAL" ]; then
+        _notify error "Update Throttled" "Last update was $(( delta ))s ago, minimum interval is ${UPDATERBTW_MIN_UPDATE_INTERVAL}s"
+        return 1
+      fi
     fi
   fi
 

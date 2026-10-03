@@ -165,13 +165,19 @@ set_printk() {
   local dest="${1:-/etc/sysctl.d/20-quiet-printk.conf}"
   local dest_dir
   dest_dir="$(dirname "$dest")"
-  mkdir -p "$dest_dir"
+  # SECURITY: check for symlinks BEFORE mkdir. mkdir -p succeeds on a
+  # symlink-to-directory, and the subsequent write would follow it.
   if [ -L "$dest_dir" ]; then
     echo "updatebtw: sysctl.d directory is a symlink, refusing" >&2
     return 1
   fi
   if [ -L "$dest" ]; then
     echo "updatebtw: $dest is a symlink, refusing" >&2
+    return 1
+  fi
+  mkdir -p "$dest_dir"
+  if [ -L "$dest_dir" ] || [ -L "$dest" ]; then
+    echo "updatebtw: sysctl path is a symlink, refusing" >&2
     return 1
   fi
   backup_file "$dest" 2>/dev/null || true

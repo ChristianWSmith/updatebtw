@@ -89,6 +89,8 @@ If a fix changes observable behavior (new error messages, new validation, change
 - **Integration tests** (`tests/integration/`): Add integration tests if the fix affects install, uninstall, update, or reconfigure flows.
 - Don't add tests for purely internal changes (e.g., reordering operations) unless the change affects external behavior.
 
+**Non-obvious test change example:** When fixing a config-write validation issue, a test asserting that explicitly-empty `AUR_HELPER=""` is rejected will fail — `${AUR_HELPER:-yay}` applies the default for null values too. The correct test asserts the default is applied, not that validation rejects the empty input. See "Bash parameter expansion gotcha" above.
+
 ### Phase 6: Commit & Push
 
 Once all fixes are applied, tests pass, and the build is clean:
@@ -143,6 +145,45 @@ mv "$tmp" "$final"
 ```
 
 ```bash
+# BAD: source a file for validation — values with $(...) execute before validation runs
+printf 'VAL="%s"\n' "$user_input" > "$tmp"
+( . "$tmp" && validate )    # command substitution already executed
+
+# GOOD: validate values BEFORE writing them to the file
+if ! [[ "$user_input" =~ ^[a-zA-Z0-9_. -]+$ ]]; then
+  echo "invalid" >&2; return 1
+fi
+printf 'VAL="%s"\n' "$user_input" > "$tmp"
+```
+
+```bash
+# BAD: chmod before symlink check — chmod follows symlinks, damaging the target
+mkdir -p "$dir"
+chmod 700 "$dir"
+[ -L "$dir" ] && exit 1  # too late, target already chmod'd
+
+# GOOD: check symlink before any mutation
+[ -L "$dir" ] && exit 1
+mkdir -p "$dir"
+chmod 700 "$dir"
+```
+
+```bash
+# BAD: interpolate username into sudoers without validation
+cat > "/etc/sudoers.d/rule-$user" << EOF
+$user ALL=(root) NOPASSWD: /usr/bin/pacman
+EOF
+
+# GOOD: validate username first
+if ! [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+  echo "invalid username" >&2; return 1
+fi
+cat > "/etc/sudoers.d/rule-$user" << EOF
+$user ALL=(root) NOPASSWD: /usr/bin/pacman
+EOF
+```
+
+```bash
 # BAD: two non-atomic operations
 mv "$tmp_a" "$dest_a"
 mv "$tmp_b" "$dest_b"  # crash between these = inconsistent state
@@ -168,6 +209,16 @@ A regex allowlist on input is good but not sufficient. Check if the value is als
 - Quoted when used in command arguments
 - Passed through `printf '%s'` rather than bare expansion
 - Used in contexts where word splitting could occur
+
+### Bash parameter expansion gotcha
+
+`${var:-default}` applies the default for both **unset and null** (empty string) values. To apply a default only when unset (not when empty), use `${var-default}`. This matters when testing whether explicit-empty values are rejected:
+
+```bash
+var=""
+echo "${var:-yay}"   # prints "yay" — default applies to empty too
+echo "${var-yay}"    # prints ""    — default only for unset
+```
 
 ## What NOT to Report
 

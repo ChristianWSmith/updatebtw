@@ -77,12 +77,19 @@ case "${1:-help}" in
       UPDATERBTW_LOG_DIR="/var/log/updatebtw"
       export UPDATERBTW_LOG_DIR
       umask 0077
-      mkdir -p "$UPDATERBTW_LOG_DIR"
-      chmod 700 "$UPDATERBTW_LOG_DIR"
+      # SECURITY: check for symlink BEFORE mkdir/chmod. mkdir -p succeeds on
+      # a symlink-to-directory, and chmod 700 would follow the symlink and
+      # change the target's mode before we get a chance to reject it.
       if [ -L "$UPDATERBTW_LOG_DIR" ]; then
         echo "updatebtw: log directory is a symlink, refusing" >&2
         exit 1
       fi
+      mkdir -p "$UPDATERBTW_LOG_DIR"
+      if [ -L "$UPDATERBTW_LOG_DIR" ]; then
+        echo "updatebtw: log directory is a symlink, refusing" >&2
+        exit 1
+      fi
+      chmod 700 "$UPDATERBTW_LOG_DIR"
       UPDATERBTW_LOG_FILE="$(mktemp "$UPDATERBTW_LOG_DIR/update.XXXXXX.log")"
       export UPDATERBTW_LOG_FILE
       exec >> "$UPDATERBTW_LOG_FILE" 2>&1
